@@ -32,6 +32,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         context = browser.new_context(viewport={'width': 1440, 'height': 1000})
+        context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=base)
         page = context.new_page()
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
