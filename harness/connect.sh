@@ -26,9 +26,20 @@ workspace_dir="$repo_dir/harness/.docker/workers/$instance_id"
 mkdir -p "$workspace_dir/searxng"
 chmod 700 "$workspace_dir"
 chmod 755 "$workspace_dir/searxng"
-printf 'CADPILOT_PORTAL_URL=%s\nCADPILOT_INSTANCE_ID=%s\nCADPILOT_PAIRING_TOKEN=%s\n' \
-  "$portal_url" "$instance_id" "$pairing_token" > "$workspace_dir/worker.env"
-chmod 600 "$workspace_dir/worker.env"
+pending_env=$(mktemp "$workspace_dir/worker.env.XXXXXX")
+trap 'rm -f "$pending_env"' EXIT
+{
+  printf 'CADPILOT_PORTAL_URL=%s\nCADPILOT_INSTANCE_ID=%s\nCADPILOT_PAIRING_TOKEN=%s\n' \
+    "$portal_url" "$instance_id" "$pairing_token"
+  # Keep network overrides across source updates and account re-pairing, without
+  # sourcing the dotenv file as shell code.
+  if [ -f "$workspace_dir/worker.env" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in CADPILOT_DNS_PRIMARY=*|CADPILOT_DNS_SECONDARY=*) printf '%s\n' "$line" ;; esac
+    done < "$workspace_dir/worker.env"
+  fi
+} > "$pending_env"
+mv "$pending_env" "$workspace_dir/worker.env"
 if [ ! -f "$workspace_dir/searxng/settings.yml" ]; then
   search_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   printf 'use_default_settings: true\nserver:\n  secret_key: %s\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n' \

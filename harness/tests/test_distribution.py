@@ -56,9 +56,12 @@ with open(os.environ['CAD_TEST_LOG'], 'a') as out:
         self.assertEqual(workspace.stat().st_mode & 0o777, 0o700)
         settings = (workspace / 'searxng/settings.yml').read_text()
         self.assertNotIn(TOKEN, result.stdout + result.stderr)
+        with config.open('a') as handle:
+            handle.write('CADPILOT_DNS_PRIMARY=9.9.9.9\n')
         result = self.run_connect(token='fresh_' + 'c' * 32)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(TOKEN, config.read_text())
+        self.assertIn('CADPILOT_DNS_PRIMARY=9.9.9.9', config.read_text())
         self.assertEqual((workspace / 'searxng/settings.yml').read_text(), settings)
         calls = [json.loads(line) for line in Path(self.env['CAD_TEST_LOG']).read_text().splitlines()]
         starts = [call for call in calls if 'up' in call['args']]
