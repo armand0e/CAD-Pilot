@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', default='http://127.0.0.1:7804')
+    parser.add_argument('--account-dir', type=Path, help='Reuse a private account from an earlier check')
     args = parser.parse_args()
     base = args.url.rstrip('/')
     os.umask(0o077)
@@ -38,11 +39,17 @@ def main():
         page.on('pageerror', lambda error: errors.append(str(error)))
         try:
             page.goto(base)
-            page.locator('#auth-toggle').click()
-            username = 'github-check-' + secrets.token_hex(4)
+            if args.account_dir:
+                username = (args.account_dir / 'account.txt').read_text().strip()
+                password = (args.account_dir / 'test-password').read_text()
+            else:
+                page.locator('#auth-toggle').click()
+                username = 'github-check-' + secrets.token_hex(4)
+                password = secrets.token_urlsafe(24)
             (output / 'account.txt').write_text(username)
+            (output / 'test-password').write_text(password)
             page.fill('#username', username)
-            page.fill('#password', secrets.token_urlsafe(24))
+            page.fill('#password', password)
             page.locator('button[type=submit]').click()
             page.wait_for_url(base + '/onboarding')
             assert page.request.get(base + '/api/projects').status == 503
@@ -77,9 +84,12 @@ def main():
             status = page.request.get(base + '/api/status').json()
             assert status['chat']['runtime'] == 'pi-coding-agent@0.85.1'
             apps = page.request.get(base + '/api/apps').json()['apps']
-            assert len([app for app in apps if 'openscad' in app['name'].lower()]) == 1
+            assert any('openscad' in app['name'].lower() for app in apps)
             page.locator('#enter').click()
             page.wait_for_url(base + '/')
+            # The API retains installation variants so older projects can reopen.
+            # The chooser groups those variants into one tile per CAD application.
+            expect(page.locator('.app-tile', has_text='OpenSCAD')).to_have_count(1)
             page.locator('.app-tile', has_text='FreeCAD').click()
             expect(page.locator('#connection-status')).to_have_text('Live', timeout=30000)
             page.screenshot(path=str(output / 'studio.png'))
