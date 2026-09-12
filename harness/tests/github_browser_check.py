@@ -12,6 +12,7 @@ import secrets
 import shlex
 import subprocess
 import tempfile
+import time
 
 from playwright.sync_api import sync_playwright, expect
 
@@ -22,6 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', default='http://127.0.0.1:7804')
     parser.add_argument('--account-dir', type=Path, help='Reuse a private account from an earlier check')
+    parser.add_argument('--live-model', action='store_true', help='Also build a box with the real Pi agent and measure its volume')
     args = parser.parse_args()
     base = args.url.rstrip('/')
     os.umask(0o077)
@@ -92,6 +94,45 @@ def main():
             expect(page.locator('.app-tile', has_text='OpenSCAD')).to_have_count(1)
             page.locator('.app-tile', has_text='FreeCAD').click()
             expect(page.locator('#connection-status')).to_have_text('Live', timeout=30000)
+            until = time.monotonic() + 60
+            while time.monotonic() < until:
+                ready = page.evaluate('''() => {
+                    const canvas = document.getElementById('screen');
+                    if (!canvas.width || canvas.classList.contains('hidden')) return false;
+                    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                    let bright = 0, samples = 0;
+                    for (let i = 0; i < pixels.length; i += 400) {
+                        if (Math.max(pixels[i], pixels[i+1], pixels[i+2]) > 16) bright++;
+                        samples++;
+                    }
+                    return bright / samples > 0.02;
+                }''')
+                if ready:
+                    break
+                page.wait_for_timeout(500)
+            else:
+                raise AssertionError('The live CAD viewport never received application pixels')
+            if args.live_model:
+                sid = page.evaluate("localStorage.getItem('cadpilot-session')")
+                prompt = 'Create a solid box 20 x 10 x 5 mm with a named height parameter. No research needed.'
+                page.fill('#composer-input', prompt)
+                page.locator('#btn-send').click()
+                until = time.monotonic() + 600  # Check budget only; the app has no model deadline.
+                while time.monotonic() < until:
+                    snapshot = page.request.get(base + f'/api/sessions/{sid}/activity').json()
+                    turn = next((e for e in reversed(snapshot['transcript']) if e['t'] == 'user' and e.get('text') == prompt), None)
+                    if turn and snapshot['phase'] == 'awaiting' and any(e['t'] == 'done' and e.get('turn_id') == turn.get('turn_id') for e in snapshot['events']):
+                        break
+                    page.wait_for_timeout(500)
+                else:
+                    raise AssertionError('The live model check exceeded its own wait budget')
+                (output / 'activity.json').write_text(json.dumps(snapshot, indent=2))
+                status = page.request.get(base + '/api/status').json()
+                project_id = next(s['project_id'] for s in status['sessions'] if s['id'] == sid)
+                project = page.request.get(base + '/api/projects/' + project_id).json()
+                assert abs(project['geometry']['volume_mm3'] - 1000) < .001
+                (output / 'geometry.json').write_text(json.dumps(project['geometry'], indent=2))
+                print('PASS: GitHub-built Pi agent created a box with independently measured volume 1000 mm³', flush=True)
             page.screenshot(path=str(output / 'studio.png'))
             page.goto(base + '/onboarding')
             # Command is kept only in this page's memory, never localStorage.
@@ -104,6 +145,7 @@ def main():
                                check=True, stdout=log, stderr=log)
             expect(page.locator('#connection')).to_have_text('Connected', timeout=60000)
             print('PASS: real Pi runtime, one OpenSCAD entry, live FreeCAD, mobile onboarding, permanent credential reconnect', flush=True)
+            page.get_by_text('Reconnect or replace a computer', exact=True).click()
             page.locator('#disconnect').click()
             expect(page.locator('#connection')).to_have_text('Waiting for your computer')
             page.locator('#btn-logout').click()
