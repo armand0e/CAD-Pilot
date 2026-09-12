@@ -1,4 +1,12 @@
 const el = id => document.getElementById(id);
+function showNotice(message, tone = 'error') {
+  const notice = el('setup-message');
+  notice.dataset.tone = message ? tone : 'info';
+  const isError = message && tone === 'error';
+  notice.setAttribute('role', isError ? 'alert' : 'status');
+  notice.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+  notice.textContent = message;
+}
 let instance, settings, polling = false, loaded = false;
 let commands = null;
 const platforms = {
@@ -61,12 +69,12 @@ async function refresh() {
       el('step-model').classList.toggle('ready', !!instance.completed);
       loaded = true;
     }
-  } catch (error) { el('setup-error').textContent = error.message; }
+  } catch (error) { showNotice(error.message); }
   finally { polling = false; }
 }
 el('generate').addEventListener('click', async () => {
   el('generate').disabled = true;
-  el('setup-error').textContent = '';
+  showNotice('');
   try {
     const data = await api('/api/onboarding/command', {method: 'POST'});
     commands = data.commands;
@@ -77,7 +85,7 @@ el('generate').addEventListener('click', async () => {
     el('generate').textContent = 'Generate a new command';
     loaded = false;
     await refresh();
-  } catch (error) { el('setup-error').textContent = error.message; }
+  } catch (error) { showNotice(error.message); }
   finally { el('generate').disabled = false; }
 });
 el('copy-command').addEventListener('click', async () => {
@@ -87,12 +95,12 @@ el('copy-command').addEventListener('click', async () => {
   } catch {
     const range = document.createRange(); range.selectNodeContents(el('command'));
     const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-    el('setup-error').textContent = 'Command selected. Copy it with your keyboard.';
+    showNotice('Command selected. Copy it with your keyboard.', 'info');
   }
 });
 el('download').addEventListener('click', async () => {
   el('download').disabled = true;
-  el('setup-error').textContent = '';
+  showNotice('');
   try {
     const response = await fetch('/api/onboarding/bundle', {method: 'POST'});
     if (!response.ok) throw new Error((await response.json()).detail || 'Setup download failed');
@@ -102,12 +110,12 @@ el('download').addEventListener('click', async () => {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
     loaded = false;
     await refresh();
-  } catch (error) { el('setup-error').textContent = error.message; }
+  } catch (error) { showNotice(error.message); }
   finally { el('download').disabled = false; }
 });
 el('model-form').addEventListener('submit', async event => {
   event.preventDefault();
-  el('setup-error').textContent = '';
+  showNotice('');
   const button = event.submitter; button.disabled = true;
   try {
     const active = settings.models.find(m => m.name === settings.active_model);
@@ -119,14 +127,14 @@ el('model-form').addEventListener('submit', async event => {
     el('model-key').value = '';
     await api('/api/onboarding/complete', {method:'POST'});
     el('step-model').classList.add('ready');
-    el('setup-error').textContent = 'Connected. Your studio is ready.';
-  } catch (error) { el('setup-error').textContent = error.message; }
+    showNotice('Connected. Your studio is ready.', 'success');
+  } catch (error) { showNotice(error.message); }
   finally { button.disabled = false; }
 });
 el('enter').addEventListener('click', async () => {
   el('enter').disabled = true;
   try { await api('/api/onboarding/complete', {method:'POST'}); location.assign('/'); }
-  catch (error) { el('setup-error').textContent = error.message; el('enter').disabled = false; }
+  catch (error) { showNotice(error.message); el('enter').disabled = false; }
 });
 el('disconnect').addEventListener('click', async () => {
   try {
@@ -134,7 +142,7 @@ el('disconnect').addEventListener('click', async () => {
     commands = null; el('command-panel').hidden = true; el('command').textContent = '';
     await refresh();
   }
-  catch (error) { el('setup-error').textContent = error.message; }
+  catch (error) { showNotice(error.message); }
 });
 selectPlatform(platform);
 refresh(); setInterval(refresh, 4000);
