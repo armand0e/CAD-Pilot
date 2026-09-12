@@ -103,16 +103,24 @@ function showSources(sources, notes, container) {
 }
 
 /* ---------------- status + launcher ---------------- */
+function renderEndpointStatus() {
+  const native = state.health.supervision?.native_operations || state.health.chat?.runtime?.startsWith('pi-coding-agent');
+  const needsActionModel = !native || state.session?.engine === 'visual';
+  $('pill-policy').classList.toggle('hidden', !needsActionModel);
+  for (const name of ['policy', 'planner']) {
+    const pill = $(`pill-${name}`), ready = state.health[name]?.ok;
+    pill.classList.toggle('ok', ready === true);
+    pill.classList.toggle('err', ready === false);
+    const label = name === 'policy' ? 'Action model' : 'Assistant';
+    pill.title = `${label}: ${ready === true ? 'last availability check passed' : ready === false ? 'last availability check failed; you can still try sending a message' : 'availability has not been confirmed; you can still send a message'}`;
+  }
+}
 async function refreshStatus() {
   try {
-    const status = await (await fetch("/api/status")).json();
+    const response = await fetch('/api/status');
+    if (!response.ok) throw new Error('Status check unavailable');
+    const status = await response.json();
     state.health = status; renderModelLabels(); if (!state.contextUsage) renderContextUsage(null);
-    for (const name of ["policy", "planner"]) {
-      const pill = $(`pill-${name}`);
-      pill.classList.toggle("ok", !!status[name].ok);
-      pill.classList.toggle("err", !status[name].ok);
-      pill.title = `${name === "policy" ? "Action model" : "Planning model"}: ${status[name].ok ? "ready" : "offline; manual CAD controls remain available"}`;
-    }
     state.sessions = status.sessions;
     renderTabs();
     if (!state.restored) {
@@ -130,12 +138,16 @@ async function refreshStatus() {
       if (!current) { detachUI(); toast("This session has ended."); }
       else if (!current.app_alive) { $("connection-status").textContent = "Application closed"; $("connection-status").className = "connection-status lost"; }
     }
+    renderEndpointStatus();
     const note = $("tool-note");
     if (status.missing_tools.length) {
       note.classList.remove("hidden");
       note.textContent = "A companion application window also opens on your desktop.";
     }
-  } catch { for (const name of ["policy", "planner"]) $(`pill-${name}`).classList.remove("ok"); }
+  } catch {
+    for (const name of ['policy', 'planner']) state.health[name] = {...state.health[name], ok: null};
+    renderEndpointStatus();
+  }
 }
 
 async function loadApps() {
@@ -302,6 +314,7 @@ function detachUI() {
   state.project = null; $('model-panel').classList.add('hidden'); loadProjects();
   state.generation++;
   state.session = null;
+  renderEndpointStatus();
   localStorage.removeItem("cadpilot-session");
   state.viewWS?.close(); state.agentWS?.close();
   state.agentConnected = state.viewConnected = state.running = state.pending = false;
@@ -348,6 +361,7 @@ function attach(session) {
   state.viewWS?.close?.(); state.agentWS?.close?.();
   const generation = ++state.generation;
   state.session = session;
+  renderEndpointStatus();
   state.project = null; loadProject(); $('engine-select').value = session.engine || 'visual';
   state.freshTask = state.canContinue = false;
   state.pendingText = "";
@@ -621,9 +635,8 @@ function send() {
   if (!state.session) { toast("start a session first"); return; }
   if (state.pending) return;
   if (!state.agentConnected) { toast("Reconnecting. Your task is still here."); return; }
-  if (!state.running && (state.health.policy?.ok === false || state.health.planner?.ok === false)) {
-    toast("The model is offline. Reconnect it to use the assistant. You can still use CAD manually.", "err"); return;
-  }
+  // A cached /models probe is advisory. Let Pi make the actual request and
+  // report provider errors; an unused action endpoint must never block chat.
   let sent;
   const attachments = (state.attachments || []).filter(a => a.kind === 'image').map(a => a.id);
   if (state.running && state.question) {
