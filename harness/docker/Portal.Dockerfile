@@ -10,7 +10,7 @@ COPY harness/config.yaml harness/requirements-lock.txt harness/
 COPY harness/pi/*.mjs harness/pi/package.json harness/pi/package-lock.json harness/pi/
 COPY harness/docker/Dockerfile harness/docker/entrypoint.sh harness/docker/smoke.py harness/docker/
 COPY .dockerignore .dockerignore
-RUN mkdir -p harness/state && chown -R cadpilot:cadpilot harness/state
+RUN chmod -R a+rX src harness && mkdir -p harness/state && chown -R cadpilot:cadpilot harness/state
 USER cadpilot
 WORKDIR /opt/cadpilot/harness
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

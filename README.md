@@ -9,7 +9,8 @@ CAD tools, geometry checks, project revisions, reference images and the live stu
 
 1. Open **https://cad.armand0e.com** and create an account.
 2. Install **Docker with Compose, Git, curl and Bash** on your CAD computer.
-3. In onboarding, select **Generate connection command**, copy it, and run it in Bash.
+3. In onboarding, choose **Windows**, **Linux** or **macOS**, then select
+   **Generate connection command**. Copy and run it in the terminal shown by your tab.
 4. Wait for Docker to build FreeCAD, OpenSCAD and Pi and start SearXNG. Return to
    onboarding, configure an image/tool-capable model, and enter the studio.
 
@@ -17,7 +18,8 @@ The command downloads this repository and builds the image locally. It pairs the
 container with your account over an outbound connection; your computer needs no
 public port or extra tunnel. Keep Docker running while using the studio.
 Linux x86-64 is the native target. Docker Desktop can provide an amd64 Linux runtime
-on macOS; on Windows, use a WSL terminal with Docker Desktop integration.
+on macOS. The Windows tab gives a PowerShell command that runs the installer through
+your default WSL distribution with Docker Desktop integration.
 
 The first build downloads several GB. A one-use pairing code lasts 24 hours.
 Saved projects, settings and the permanent connection credential persist in Docker

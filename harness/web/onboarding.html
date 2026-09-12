@@ -6,10 +6,17 @@
 <h1>Your workspace. Your computer.</h1><p class="intro">Run CAD and web search on your computer. Use your account to reach them from this browser.</p>
 <ol class="steps"><li id="step-account">Account ready</li><li id="step-computer">Connect computer</li><li id="step-model">Choose model</li></ol>
 <section><div class="section-title"><h2>1. Connect your CAD computer</h2><span id="connection" role="status">Checking…</span></div>
-<p>Install Docker with Compose, Git and curl on the computer that will run FreeCAD, OpenSCAD and SearXNG. Use a Bash terminal (Linux, macOS, or WSL on Windows) and keep Docker running while you work.</p>
+<p>Choose the operating system of the computer that will run FreeCAD, OpenSCAD and SearXNG. Keep Docker running while you work.</p>
+<div class="platform-tabs" role="tablist" aria-label="Your computer's operating system">
+<button id="platform-windows" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="windows">Windows</button>
+<button id="platform-linux" role="tab" aria-controls="platform-panel" aria-selected="true" data-platform="linux">Linux</button>
+<button id="platform-macos" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="macos">macOS</button>
+</div>
+<div id="platform-panel" role="tabpanel" aria-labelledby="platform-linux"><p id="platform-help">Install Docker Engine with Compose, Git and curl. Run your command in a terminal.</p>
 <p id="distribution">Your command pulls <a href="https://github.com/armand0e/CAD-Pilot" target="_blank" rel="noopener noreferrer">CAD-Pilot from GitHub</a>, builds the CAD image and starts SearXNG.</p>
 <button id="generate">Generate connection command</button>
-<div id="command-panel" hidden><p class="hint">Copy and run this command on your CAD computer:</p><pre id="command" tabindex="0"></pre><button id="copy-command" class="secondary">Copy command</button><p id="pairing-expiry" class="hint"></p></div>
+<div id="command-panel" hidden><p id="command-help" class="hint">Run in your Linux terminal:</p><pre id="command" tabindex="0"></pre><button id="copy-command" class="secondary">Copy command</button><p id="pairing-expiry" class="hint"></p></div>
+</div>
 <p class="hint">The first build downloads several GB and may take a while. Your computer connects to this account automatically; no incoming port or extra tunnel is needed. CAD runs as Linux x86-64, including through Docker Desktop's amd64 support.</p>
 <details><summary>Reconnect or replace a computer</summary><p>Generating a new command revokes the previous connection. Rerun it on the same computer to update the source and keep your saved projects. The code is private, works once, and expires after 24 hours.</p><button id="disconnect" class="secondary" hidden>Disconnect this computer</button>
 <p>For a setup without Git, download and extract a ZIP, then run <code>docker compose up -d --build --wait</code> in that folder. This also replaces your current pairing code.</p><button id="download" class="secondary">Download ZIP instead</button></details></section>

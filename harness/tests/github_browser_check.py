@@ -50,6 +50,12 @@ def main():
             expect(page.locator('#command-panel')).to_be_visible()
             command = page.locator('#command').inner_text()
             assert 'raw.githubusercontent.com/armand0e/CAD-Pilot/main/install.sh' in command
+            page.get_by_role('tab', name='Windows', exact=True).click()
+            expect(page.locator('#command')).to_contain_text('wsl.exe --exec bash -s --')
+            page.get_by_role('tab', name='macOS', exact=True).click()
+            expect(page.locator('#command-help')).to_contain_text('Terminal on macOS')
+            page.get_by_role('tab', name='Linux', exact=True).click()
+            expect(page.locator('#command')).to_have_text(command)
             identity = shlex.split(command)[-2]
             repo = output / 'CAD Pilot'
             wrapper = repo / 'harness/.docker/workers' / identity / 'cadpilot'
@@ -57,8 +63,11 @@ def main():
             page.locator('#copy-command').click()
             expect(page.locator('#copy-command')).to_have_text('Copied')
             with (output / 'install.log').open('w') as log:
-                subprocess.run(['bash', '-c', command], env=dict(os.environ, CADPILOT_INSTALL_DIR=str(repo)),
-                               check=True, stdout=log, stderr=log)
+                result = subprocess.run(['bash', '-c', command], env=dict(os.environ, CADPILOT_INSTALL_DIR=str(repo)),
+                                        stdout=log, stderr=log)
+                # Do not include the private command in exception text.
+                if result.returncode:
+                    raise RuntimeError('GitHub installer failed; see the private install.log')
             expect(page.locator('#connection')).to_have_text('Connected', timeout=60000)
             print('PASS: public GitHub download, fresh clone, real Docker build, account pairing', flush=True)
             compose = json.loads(subprocess.check_output([str(wrapper), 'config', '--format', 'json']))

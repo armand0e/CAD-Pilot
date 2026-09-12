@@ -148,6 +148,9 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.headers['cache-control'], 'no-store')
         data = result.json()
+        self.assertEqual(set(data['commands']), {'windows', 'linux', 'macos'})
+        self.assertEqual(data['commands']['linux'], data['command'])
+        self.assertIn('wsl.exe --exec bash -s --', data['commands']['windows'])
         self.assertEqual(data['repository'], 'https://github.com/armand0e/CAD-Pilot')
         origin, identity, token = shlex.split(data['command'])[-3:]
         self.assertEqual(origin, 'http://127.0.0.1')

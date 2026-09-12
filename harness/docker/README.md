@@ -141,11 +141,15 @@ volume and session cookie; changing one does not overwrite the other.
 ### Install from GitHub
 
 Source and Docker build files are published at **https://github.com/armand0e/CAD-Pilot**.
-Onboarding generates a private, copyable command for the signed-in account. It downloads
+Onboarding has Windows, Linux and macOS tabs and generates a private, copyable command
+for the signed-in account. Switching tabs reuses the same pairing code. It downloads
 `install.sh` from GitHub, clones the repository into `~/CAD-Pilot`, then runs
 `harness/connect.sh` to build `compose.worker.yaml` and start CAD plus SearXNG.
-Install Git, curl, Bash and Docker with Compose first. Windows users can run it in WSL
-with Docker Desktop integration; macOS needs Docker Desktop's Linux amd64 support.
+Install Git, curl, Bash and Docker with Compose first. The Windows tab uses PowerShell
+to download the installer and pass it to Bash in the default WSL distribution. Enable
+[Docker Desktop WSL integration](https://docs.docker.com/desktop/features/wsl/)
+for that distribution and install Git/curl inside it. Linux uses a Bash command;
+macOS runs it in Terminal with Docker Desktop's Linux amd64 support.
 The CAD image uses Linux x86-64. It does not install or download model weights.
 
 The installer prints a workspace-specific `cadpilot` command for logs, stopping,

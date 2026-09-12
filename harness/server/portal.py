@@ -13,7 +13,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import auth
 from .bundles import runtime_bundle
-from .distribution import REPOSITORY_URL, connection_command
+from .distribution import REPOSITORY_URL, connection_commands
 from .instances import Instances
 from .relay import Disconnected, PortalConnection, allowed_path
 from .security import LocalWorkspaceSecurity
@@ -89,7 +89,8 @@ def create_app(root=ROOT, origin=None, image=None):
     @app.post('/api/onboarding/command')
     async def setup_command(request: Request):
         pair = await new_pair(request)
-        return JSONResponse({'command': connection_command(pair, origin), 'expires': pair['expires'],
+        commands = connection_commands(pair, origin)
+        return JSONResponse({'command': commands['linux'], 'commands': commands, 'expires': pair['expires'],
                              'repository': REPOSITORY_URL})
 
     @app.post('/api/onboarding/bundle')

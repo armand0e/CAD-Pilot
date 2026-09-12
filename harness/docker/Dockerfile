@@ -1,8 +1,8 @@
 FROM node:24.21.0-bookworm-slim AS pi
 WORKDIR /pi
-COPY harness/pi/package.json harness/pi/package-lock.json ./
+COPY --chmod=644 harness/pi/package.json harness/pi/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-COPY harness/pi/*.mjs ./
+COPY --chmod=644 harness/pi/*.mjs ./
 
 FROM ubuntu:24.04 AS freecad
 ARG FREECAD_VERSION=1.1.3
@@ -37,9 +37,11 @@ COPY harness/knowledge/*.md harness/knowledge/
 COPY harness/config.yaml harness/config.yaml
 COPY harness/docker/entrypoint.sh /usr/local/bin/cadpilot-entrypoint
 COPY harness/docker/smoke.py harness/docker/smoke.py
-RUN mkdir -p harness/state harness/projects harness/apps/openscad-extracted \
+RUN chmod -R a+rX src harness/server harness/web harness/knowledge \
+    && chmod 644 harness/config.yaml \
+    && mkdir -p harness/state harness/projects harness/apps/openscad-extracted \
     && printf '#!/bin/sh\nexec /usr/bin/openscad "$@"\n' > harness/apps/openscad-extracted/AppRun \
-    && chmod +x harness/apps/openscad-extracted/AppRun /usr/local/bin/cadpilot-entrypoint \
+    && chmod 755 harness/apps/openscad-extracted/AppRun /usr/local/bin/cadpilot-entrypoint \
     && chown -R cadpilot:cadpilot harness/state harness/projects harness/knowledge
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 QT_X11_NO_MITSHM=1 LIBGL_ALWAYS_SOFTWARE=1
 USER cadpilot

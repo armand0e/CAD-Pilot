@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from server.distribution import connection_command
+from server.distribution import connection_command, connection_commands
 
 ROOT = Path(__file__).resolve().parents[2]
 IDENTITY = 'a' * 32
@@ -98,6 +98,28 @@ print('printf "%s\\\\n" "$@"')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(), [origin, IDENTITY, TOKEN])
         self.assertNotIn(TOKEN, Path(self.env['CAD_TEST_LOG']).read_text())
+
+    @unittest.skipUnless(os.environ.get('CADPILOT_TEST_PWSH') or shutil.which('pwsh'), 'PowerShell is optional for cross-platform command checks')
+    def test_powershell_passes_the_installer_and_literal_pairing_arguments_to_wsl(self):
+        self.script('wsl.exe', '''#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ['CAD_TEST_LOG'], 'w') as out:
+    json.dump({'args': sys.argv[1:], 'stdin': sys.stdin.read()}, out)
+''')
+        origin = "https://cad.example/quote'$(literal)"
+        command = connection_commands({'id': IDENTITY, 'token': TOKEN}, origin)['windows']
+        source = "function Invoke-WebRequest { [pscustomobject]@{ Content = '# ASCII installer fixture' } }\n" + command
+        script = self.root / 'check.ps1'
+        script.write_text(source)
+        result = subprocess.run([os.environ.get('CADPILOT_TEST_PWSH') or shutil.which('pwsh'),
+                                 '-NoProfile', '-NonInteractive', '-File', str(script)],
+                                env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        received = json.loads(Path(self.env['CAD_TEST_LOG']).read_text())
+        self.assertEqual(received['args'], ['--exec', 'bash', '-s', '--', origin, IDENTITY, TOKEN])
+        self.assertEqual(received['stdin'].strip(), '# ASCII installer fixture')
+        self.assertTrue((ROOT / 'install.sh').read_bytes().isascii())
+        self.assertNotIn(b'\r', (ROOT / 'install.sh').read_bytes())
 
     def test_existing_unrelated_repository_is_not_modified(self):
         self.checkout()
