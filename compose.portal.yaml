@@ -1,0 +1,26 @@
+name: cadpilot-portal
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: harness/docker/Portal.Dockerfile
+    image: cadpilot-portal:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${CADPILOT_PORTAL_PORT:-7803}:7800"
+    environment:
+      CADPILOT_PUBLIC_ORIGIN: ${CADPILOT_PUBLIC_ORIGIN:-https://cad.armand0e.com}
+      CADPILOT_TRUST_CLOUDFLARE: "0"
+      CADPILOT_RUNTIME_IMAGE: ${CADPILOT_RUNTIME_IMAGE:-}
+    volumes:
+      - accounts:/opt/cadpilot/harness/state
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7800/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+volumes:
+  accounts:

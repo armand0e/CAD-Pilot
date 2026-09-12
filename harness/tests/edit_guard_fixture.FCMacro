@@ -1,0 +1,37 @@
+# Fixed deterministic test fixture only. Never loaded by the production app.
+def _guard_tick():
+    import os
+    from pathlib import Path
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    root = Path(os.environ['CADPILOT_NATIVE_STATE']).parent
+    request = root / 'guard-fixture-request'
+    if not request.exists():
+        return
+    action = request.read_text()
+    request.unlink()
+    try:
+        if action == 'view':
+            Gui.activeDocument().activeView().viewTop()
+            Gui.Selection.clearSelection()
+            Gui.Selection.addSelection(App.ActiveDocument.Name, 'Plate', 'Face1')
+        elif action == 'edit':
+            sheet = App.ActiveDocument.getObject('Parameters')
+            sheet.set(sheet.getCellFromAlias('p_length'), '70')
+            App.ActiveDocument.recompute()
+        elif action == 'background':
+            doc = App.newDocument('ManualBackground')
+            doc.addObject('Part::Box', 'ManualBox')
+            doc.recompute()
+            App.newDocument('EmptyForeground')
+        else:
+            raise ValueError('Unknown fixed fixture action')
+        (root / 'guard-fixture-receipt').write_text(action)
+    except Exception as error:
+        (root / 'guard-fixture-receipt').write_text('ERROR: ' + str(error))
+
+import FreeCADGui as _guard_gui
+from PySide6 import QtCore as _guard_core
+_guard_gui._guard_fixture_timer = _guard_core.QTimer(_guard_gui.getMainWindow())
+_guard_gui._guard_fixture_timer.timeout.connect(_guard_tick)
+_guard_gui._guard_fixture_timer.start(200)

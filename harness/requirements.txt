@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pillow
+python-xlib
+pyyaml
+httpx
+python-multipart>=0.0.9
+playwright

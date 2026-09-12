@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cad1000-data"
+version = "0.1.0"
+description = "Reproducible preprocessing for markov-ai/cad-1000-hours"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+frames = ["imageio-ffmpeg>=0.5.1"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+cad1000 = "cad1000.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

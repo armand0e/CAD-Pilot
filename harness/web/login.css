@@ -1,0 +1,17 @@
+:root {color-scheme:dark;font-family:Inter,system-ui,sans-serif;color:#eeeae5;background:#171716}
+* {box-sizing:border-box}
+body {min-height:100dvh;margin:0;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at top,#303027 0,transparent 65%)}
+.login-card {width:100%;max-width:400px;padding:40px 32px;border:1px solid #3b3a34;border-radius:20px;background:#20201ddd;box-shadow:0 20px 80px #0003}
+.mark {color:#d7c7a1;font-size:40px;line-height:1}
+.brand {font-size:13px;letter-spacing:.12em;margin:14px 0 28px}
+h1 {font-size:26px;font-weight:500;letter-spacing:-.04em;margin:0}
+.intro {color:#aaa79e;font-size:14px;margin:10px 0 30px}
+label {display:block;font-size:13px;margin:18px 0 8px}
+input {width:100%;font:inherit;color:inherit;background:#171716;border:1px solid #48463e;border-radius:8px;padding:12px}
+input:focus-visible,button:focus-visible {outline:2px solid #d7c7a1;outline-offset:3px}
+button {display:flex;justify-content:space-between;width:100%;border:0;border-radius:8px;padding:13px 16px;background:#d7c7a1;color:#26231c;font:inherit;font-weight:600;cursor:pointer}
+button:disabled {opacity:.6;cursor:wait}
+#login-error {min-height:20px;color:#ffb2a4;font-size:13px;line-height:1.5;margin:16px 0}
+@media(max-width:440px) {.login-card {padding:30px 24px}}
+
+[hidden] {display:none!important}#auth-toggle{background:transparent;color:#d7c7a1;font-size:13px;justify-content:center;margin-top:14px}

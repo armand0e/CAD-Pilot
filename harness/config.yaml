@@ -1,0 +1,41 @@
+policy:
+  # Temporarily the general qwen3.8 endpoint for harness testing; switch back to the trained
+  # adapter on :8001 (cad-policy) once it is served.
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen3.8-27b
+  strict: false                        # generic model: repair near-miss JSON. Set true for the trained adapter.
+  structured_output: true              # enforce the executable JSON Schema during generation
+  max_tokens: 512
+planner:
+  base_url: http://127.0.0.1:8000/v1   # the qwen3.8-27b endpoint doubles as planner
+  model: qwen3.8-27b
+  reasoning_effort: medium             # this served Qwen template otherwise defaults to xhigh
+  thinking_token_budget: 3072          # planning turns; 1024 truncated follow-up planning mid-sentence
+  structured_output_whitespace_pattern: '[ \n\t]{0,8}' # local vLLM: prevent unbounded JSON padding
+research:
+  enabled: true
+  max_calls: 0                        # 0 = no budget. Local Chromium: Bing -> Brave -> DuckDuckGo; no API keys
+agent:
+  request_timeout_s: 0                # no hardware-dependent generation deadline
+  model_thinking: true                 # stream provider-supplied reasoning for planning/native requests
+  native_operations: true             # Pi AgentSession with native CAD tools
+  native_request_timeout_s: 0          # 0/null = unlimited; Stop cancels generation
+  native_reasoning_effort: medium      # modeling turns think more than planning turns
+  native_thinking_token_budget: 8192   # per-model override in Settings; 4096 still truncated turns that study a drawing image
+  planner_request_timeout_s: 0         # 0/null = unlimited; malformed JSON still fails early
+  max_steps: 80                        # atomic GUI operations, not modeling-feature count
+  max_actions_per_step: 1               # inspect the outcome before another desktop operation
+  action_delay_s: 0.3
+  observation_delay_s: 0.4
+  settle_timeout_s: 1.6                # wait for a quiet interval, with a finite upper bound
+  model_image_width: 1600
+  recovery_attempts: 4                 # distinct failed operations, not two uncertain screenshots
+  uncertain_attempts: 6
+view:
+  fps: 8
+  quality: 78
+  max_width: 1600
+session:
+  width: 1440                          # readable toolbars without shrinking text for the model
+  height: 900
+  max_sessions: 4

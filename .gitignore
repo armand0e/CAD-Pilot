@@ -1,0 +1,33 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# The source corpus is 256+ GiB and generated shards can be rebuilt.
+data/raw/
+data/processed/
+
+# Training runs (adapters, checkpoints, evaluation outputs)
+runs/
+harness/.docker/
+harness/state/
+harness/projects/
+harness/apps/
+harness/knowledge/learned_facts.jsonl
+
+# Local installs, account credentials, reference assets and development notes.
+node_modules/
+harness/.node/
+.env
+.env.*
+*.pem
+*.key
+*.sqlite3*
+*.log
+HANDOFF.md
+TRAINING_HANDOFF_QWEN35_9B.md
+harness/LM-chatUI-public-v5.html
+harness/lm-chat-proxy.js
+data/

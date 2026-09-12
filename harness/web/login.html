@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · CADPilot</title>
+  <link rel="stylesheet" href="/static/login.css">
+  <script src="/static/login.js" defer></script>
+</head>
+<body>
+  <main class="login-card">
+    <div class="mark" aria-hidden="true">◇</div>
+    <p class="brand">CADPilot</p>
+    <h1>Your ideas, in shape.</h1>
+    <p class="intro">Sign in to your CAD workspace.</p>
+    <form id="login-form">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required maxlength="64" autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+      <p id="login-error" role="alert"></p>
+      <button type="submit">Sign in <span aria-hidden="true">→</span></button>
+    </form>
+    <button id="auth-toggle" type="button" hidden>Create an account</button>
+  </main>
+</body>
+</html>

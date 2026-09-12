@@ -1,0 +1,35 @@
+/* App-wide palette and typography. Chat and workspace share these tokens. */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #242321; --bg-elev: #2c2a27; --bg-elev2: #34312c;
+  --surface-inset: #292825; --surface-canvas: #201f1d; --surface-hover: #38352f;
+  --text: #eeeae2; --text2: #b7b1a6; --text3: #a19a8e;
+  --hairline: #ffffff12; --hairline2: #ffffff24; --border-hover: #ffffff40;
+  --accent: #dba17c; --accent-soft: #dba17c12; --on-accent: #26211d;
+  --good: #a1b59e; --bad: #e4a29b; --warn: #d9bd87;
+  --shadow: 0 8px 30px #0002; --shadow-dialog: 0 24px 80px #0005;
+  --backdrop: #14131099; --overlay-surface: #2c2a27ed;
+  --font: -apple-system, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --r-lg: 16px; --r-md: 12px; --r-sm: 8px; --panel-width: 440px;
+  --motion-fast: 150ms; --motion-enter: 300ms; --motion-ease: cubic-bezier(.2,.7,.2,1);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #faf9f5; --bg-elev: #fffefa; --bg-elev2: #eeece5;
+  --surface-inset: #f1f0e9; --surface-canvas: #f5f4ee; --surface-hover: #e9e6dc;
+  --text: #34322e; --text2: #68645c; --text3: #777167;
+  --hairline: #39332912; --hairline2: #39332926; --border-hover: #3933294d;
+  --accent: #a95635; --accent-soft: #a956350d; --on-accent: #fffefa;
+  --good: #476b47; --bad: #ae443e; --warn: #856329;
+  --shadow: 0 6px 24px #3e35210c; --shadow-dialog: 0 24px 80px #3e352126;
+  --backdrop: #29241c52; --overlay-surface: #fffefaed;
+}
+:root {
+  --chat-bg: var(--bg); --chat-surface: var(--bg-elev); --chat-inset: var(--surface-inset);
+  --chat-user: var(--bg-elev2); --chat-text: var(--text); --chat-secondary: var(--text2); --chat-muted: var(--text3);
+  --chat-line: var(--hairline); --chat-line-strong: var(--hairline2); --chat-accent: var(--accent);
+  --chat-answer: var(--font-display); --chat-shadow: var(--shadow);
+  --chat-enter: var(--motion-enter); --chat-ease: var(--motion-ease);
+}

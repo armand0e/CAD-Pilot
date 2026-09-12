@@ -1,0 +1,8 @@
+# Bootstrap a retained module so timer callbacks outlive FreeCAD's macro execution scope.
+import importlib.util
+import os
+import sys
+_spec = importlib.util.spec_from_file_location("cadpilot_freecad_observer", os.environ["CADPILOT_OBSERVER_SCRIPT"])
+_module = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = _module
+_spec.loader.exec_module(_module)

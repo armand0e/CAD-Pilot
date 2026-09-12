@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CADPilot</title>
+<script src="/static/auth.js"></script>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/chat/chat.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 20 20" width="15" height="15"><path d="M10 1.5 18 6v8l-8 4.5L2 14V6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 10 18 6M10 10v8.5M10 10 2 6" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55"/></svg></div>
+      <span class="brand-name">CADPilot</span>
+      <span class="brand-tag">Workspace</span>
+    </div>
+    <div id="session-tabs" class="session-tabs"></div>
+    <div class="top-right">
+      <button id="btn-mobile-view" class="btn sm mobile-view-toggle" type="button" aria-label="Show CAD canvas">Canvas</button>
+      <div class="pill" id="pill-policy"><span class="dot"></span>Policy</div>
+      <div class="pill" id="pill-planner"><span class="dot"></span>Planner</div>
+      <button id="btn-theme" class="icon-btn" type="button" title="Switch to light theme" aria-label="Switch to light theme">
+        <svg class="theme-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>
+        <svg class="theme-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.1A8.5 8.5 0 0 1 9.9 3.5 8.5 8.5 0 1 0 20.5 14.1Z"/></svg>
+      </button>
+      <button id="btn-settings" class="icon-btn" type="button" title="Settings: model providers and web search" aria-label="Settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+      <button id="btn-help" class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+      <button id="btn-new-session" class="btn sm">+ New session</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="agent-panel">
+      <div class="panel-head">
+        <span class="panel-title"><span class="agent-spark">✳</span> Build assistant</span>
+        <div class="segmented" id="mode-toggle" role="group" aria-label="Agent mode">
+          <button data-mode="manual" aria-pressed="false" title="Give one objective at a time">Manual</button>
+          <button data-mode="auto" class="on" aria-pressed="true" title="Let the agent plan each step">Auto</button>
+        </div>
+      </div>
+      <div class="activity-toolbar"><span>CONVERSATION</span><div><button id="btn-new-task" title="Start a separate goal without closing your document" disabled>New task</button> <button id="btn-export" title="Download session activity" disabled>Export ↗</button></div></div>
+      <div id="run-card" class="run-card hidden">
+        <div class="run-top"><span id="run-phase">Ready</span><span id="run-time">0:00</span></div>
+        <p id="run-task"></p>
+        <div class="run-bottom"><span id="run-progress">0 executed</span><div><button id="btn-pause" class="btn sm">Pause</button><button id="btn-takeover" class="btn sm">Take control</button></div></div>
+        <div class="run-track" title="Action budget used, not task completion"><div id="run-fill"></div></div>
+      </div>
+      <div id="chat" class="chat" role="region" aria-label="Conversation" tabindex="0">
+        <div class="empty-state" id="chat-empty">
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5"/><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".8"/></svg></div>
+          <span class="eyebrow">From idea to geometry</span>
+          <h4>What will you build?</h4>
+          <p>Open an application, describe your part, and watch each step take shape.</p>
+          <div class="suggestions">
+            <button data-prompt="Create a 60 × 40 × 8 mm rectangular plate with four 5 mm mounting holes, each 8 mm from the adjacent edges."><span>▱</span><div>Mounting plate<small>Dimensions, holes, and a solid base</small></div><span>↗</span></button>
+            <button data-prompt="Create a hollow cylindrical spacer, 20 mm outer diameter, 10 mm inner diameter, and 15 mm tall."><span>◎</span><div>Precision spacer<small>A simple part to start with</small></div><span>↗</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="chat-jump"><button id="jump-latest" type="button" hidden>↓ Jump to latest</button></div>
+      <div id="chat-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="composer">
+        <div id="attachment-chips" class="attachment-chips" hidden></div>
+        <div class="composer-card">
+          <div class="composer-row">
+            <textarea id="composer-input" rows="1" aria-label="Message CADPilot" placeholder="What would you like to make?"></textarea>
+            <button id="btn-send" class="send-btn" type="button" title="Send (Enter)" aria-label="Send" data-mode="send" disabled>
+              <svg class="send-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M15 4v6H6M9 7l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="stop-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="2" fill="currentColor"/></svg>
+            </button>
+            <button id="btn-stop" type="button" class="sr-only" hidden tabindex="-1">Stop agent</button>
+          </div>
+          <div class="composer-toolbar">
+            <div class="menu-anchor">
+              <button id="btn-attach" class="toolbar-btn" type="button" title="Add files, or turn web search on or off" aria-label="Add files or change web search" aria-haspopup="menu" aria-expanded="false">+</button>
+              <div id="menu-attach" class="popover" role="menu" hidden>
+                <button class="popover-item" type="button" role="menuitem" id="menu-add-files">Add files or folders<span class="popover-note">images, STEP, STL · paste or drop also works</span></button>
+                <label class="popover-item popover-switch" role="menuitemcheckbox"><span>Web search</span><span class="switch"><input id="web-search-toggle" type="checkbox" checked><i></i></span></label>
+              </div>
+              <input id="attach-input" type="file" accept="image/*,.step,.stp,.stl" multiple hidden>
+              <input id="attach-folder-input" type="file" webkitdirectory multiple hidden>
+            </div>
+            <span id="composer-hint" class="toolbar-hint"></span>
+            <span class="toolbar-spacer"></span>
+            <div class="menu-anchor">
+              <button id="model-name-label" class="toolbar-meta toolbar-menu-btn" type="button" title="Switch model" aria-haspopup="menu" aria-expanded="false">model</button>
+              <div id="menu-model" class="popover" role="menu" hidden></div>
+            </div>
+            <div class="menu-anchor">
+              <button id="model-effort-label" class="toolbar-meta toolbar-menu-btn" type="button" title="Reasoning effort" aria-haspopup="menu" aria-expanded="false">—</button>
+              <div id="menu-effort" class="popover" role="menu" hidden></div>
+            </div>
+            <span id="context-ring" class="context-ring" role="img" aria-label="Context window usage" tabindex="0">
+              <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2.2"/><circle id="context-arc" cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="0 44" transform="rotate(-90 10 10)"/></svg>
+              <span id="context-tip" class="context-tip" role="tooltip" hidden></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <div id="panel-resize" role="separator" tabindex="0" aria-label="Resize assistant panel" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="640" aria-valuenow="390"></div>
+    <section id="stage">
+      <div class="stage-bar">
+        <span id="vp-title" class="stage-title">Your workspace</span>
+        <span id="connection-status" class="connection-status">Ready to start</span>
+        <span id="vp-badge" class="control-badge hidden"><span class="badge-dot"></span>Agent has control</span>
+        <span class="spacer"></span>
+        <span id="vp-meta" class="stage-meta"></span>
+        <div class="stage-actions">
+          <button id="btn-shot" class="icon-btn hidden" title="Save screenshot"><svg viewBox="0 0 20 20" width="15" height="15"><rect x="2.5" y="5" width="15" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 5l1.2-2h3.6L13 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+          <button id="btn-full" class="icon-btn hidden" title="Fullscreen"><svg viewBox="0 0 20 20" width="15" height="15"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          <button id="btn-close-session" class="btn ghost sm hidden">End session</button>
+        </div>
+      </div>
+      <div id="viewport" class="viewport">
+        <div id="launcher" class="launcher">
+          <div class="blueprint" aria-hidden="true"><svg viewBox="0 0 500 230"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="currentColor" stroke-width=".35" opacity=".22"/></pattern></defs><rect width="500" height="230" fill="url(#grid)"/><g fill="none" stroke="currentColor" stroke-linejoin="round"><path d="M125 117 278 38 395 100 242 180Z" fill="currentColor" fill-opacity=".035" stroke-width="1.6"/><path d="M125 117v22l117 62 153-79v-22M242 180v21" stroke-width="1.6"/><g stroke-width="1.4"><ellipse cx="180" cy="111" rx="11" ry="5.5"/><ellipse cx="277" cy="61" rx="11" ry="5.5"/><ellipse cx="340" cy="99" rx="11" ry="5.5"/><ellipse cx="243" cy="149" rx="11" ry="5.5"/></g><path d="m109 114-24-13m166-75-23-12M97 95 233 25m-132 66-8 8m144-78-8 8M260 214l10 7m137-86 14 8m-143 78 136-71" opacity=".4" stroke-width=".8"/><path d="M50 185v24h24M50 209l-12 7" opacity=".5"/></g><g fill="currentColor" font-family="monospace" font-size="10" opacity=".65"><text x="145" y="48">60.00</text><text x="340" y="203">40.00</text><text x="43" y="177">Z</text><text x="81" y="214">X</text><text x="23" y="225">Y</text></g></svg></div>
+          <span class="eyebrow">Your next idea starts here</span>
+          <h2>Let’s give it shape.</h2>
+          <p class="launcher-sub">A little imagination. Something you can hold.<br>Choose a CAD tool and make it your own.</p>
+          <div id="app-grid" class="app-grid"></div>
+          <div id="recent-projects" class="recent-projects"></div>
+          <p id="tool-note" class="tool-note hidden"></p>
+          <div class="launcher-foot"><span class="dot"></span> Runs locally <span>·</span> You can take control at any time</div>
+        </div>
+        <div id="booting" class="booting hidden"><div class="spinner"></div><span id="booting-text">Starting…</span></div>
+        <canvas id="screen" class="hidden" tabindex="0"></canvas>
+        <div id="focus-hint" class="focus-hint hidden">Click to interact</div>
+        <div id="agent-cursor" class="agent-cursor hidden">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M4.5 2.8 L19.5 11.6 L12.4 13.1 L9.4 20.2 Z" fill="#fff" stroke="#0a0a0a" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </div>
+        <div id="overlay-chips"></div>
+      </div>
+      <details id="model-panel" class="model-panel hidden">
+        <summary><span>Model</span><span id="model-name">No saved revision yet</span><span id="model-status">Native tools ready</span></summary>
+        <div class="model-content">
+          <div class="model-grid">
+            <section class="model-section" aria-label="Saved geometry and files">
+              <h3>Geometry &amp; files</h3>
+              <div id="model-views" class="model-views"></div><div id="model-measurements"></div><div id="model-parameters" class="model-parameters"></div>
+              <div id="model-downloads" class="model-downloads"></div>
+            </section>
+            <section class="model-section" aria-label="Modeling tools and revision history">
+              <h3>Tools &amp; history</h3>
+              <div class="model-tools"><label>Tools <select id="engine-select" aria-label="Modeling tools"><option value="hybrid">Native + visual</option><option value="visual">Visual only</option></select></label><button id="btn-use-saved" class="btn sm" title="Future native edits use the saved recipe, not unsaved viewport changes. Open documents are preserved.">Use saved revision</button></div>
+              <div class="model-tools"><label>History <select id="revision-select" aria-label="Saved revisions"></select></label><button id="btn-restore" class="btn sm">Restore as new revision</button></div>
+              <p id="model-warning">Native tools support parametric solids made from primitives and booleans. Other operations use visual controls.</p>
+            </section>
+          </div>
+          <details id="model-research" class="hidden"><summary>Sources &amp; assumptions</summary><div id="model-research-content"></div></details>
+          <p class="model-disclaimer">Measurements describe the saved revision, not unsaved viewport edits. A valid solid is not certification of every requested feature. All revisions are retained.</p>
+        </div>
+      </details>
+      <footer class="stage-footer"><span id="view-hint">A shared canvas for you and your agent</span><span id="frame-info"></span></footer>
+    </section>
+  </main>
+
+  <div id="toasts"></div>
+  <dialog id="help-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button><span class="eyebrow">WORKSPACE SHORTCUTS</span><h2>Stay in the flow.</h2><dl><dt>Send a task</dt><dd>Enter</dd><dt>New line</dt><dd>Shift + Enter</dd><dt>Stop the agent</dt><dd>Esc</dd><dt>Focus task input</dt><dd>Ctrl / ⌘ + K</dd></dl><p>Click the CAD viewport to use its keyboard shortcuts. Pause finishes the current step; Take control stops the run.</p></form></dialog>
+  <dialog id="close-dialog"><form method="dialog"><span class="eyebrow">END SESSION</span><h2>Finished with this workspace?</h2><p>Save your work in the CAD application first. Ending this session closes the application and its display.</p><div class="dialog-actions"><button class="btn" value="cancel">Keep working</button><button class="btn accent" value="close">End session</button></div></form></dialog>
+</div>
+<script type="module" src="/static/app.js"></script>
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <form method="dialog" id="settings-form">
+      <div class="settings-head"><h2 id="settings-title">Settings</h2><button type="button" class="icon-btn" id="settings-close" aria-label="Close">×</button></div>
+      <section class="settings-section">
+        <label class="settings-row"><span>Web search</span><span class="switch"><input id="settings-web" type="checkbox"><i></i></span></label>
+        <label class="settings-row"><span>Reasoning effort</span><select id="settings-effort"></select></label>
+      </section>
+      <section class="settings-section">
+        <div class="settings-row"><span>Model providers</span><button type="button" class="btn sm" id="settings-add-model">+ Add model</button></div>
+        <p class="settings-help">OpenAI-compatible chat endpoints. The active model serves the assistant; keys are stored on this machine only.</p>
+        <div id="settings-models"></div>
+      </section>
+      <div class="settings-actions"><button id="btn-logout" class="btn sm" type="button" hidden>Sign out</button><span id="settings-status" class="settings-status"></span><button type="button" class="btn accent" id="settings-save">Save</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

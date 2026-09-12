@@ -1,0 +1,23 @@
+{
+  "notice": "Stock-model benchmark tasks with deterministic graders. Answers are scripted replies to any question the agent asks (first option, or the text). Grading reads the final revision's design.json and geometry.json only.",
+  "tasks": [
+    {"id": "plate_holes", "prompt": "Make a 60 x 40 x 8 mm mounting plate with four 5 mm through holes, each centred 8 mm from its two nearest edges.",
+     "answers": {"default": "Use exactly those dimensions; no other features."},
+     "grade": {"bounds_mm": [60, 40, 8], "parts": 1, "through_holes": {"count": 4, "diameter_mm": 5, "axis": "z", "centers_xy": [[8, 8], [52, 8], [8, 32], [52, 32]], "tolerance_mm": 0.05}}},
+    {"id": "spacer", "prompt": "Make a round spacer: 20 mm outer diameter, 6.5 mm through hole, 12 mm tall.",
+     "answers": {"default": "Exactly those dimensions."},
+     "grade": {"bounds_mm": [20, 20, 12], "parts": 1, "volume_mm3": {"expect": "pi*(10^2-3.25^2)*12", "tolerance_pct": 1}}},
+    {"id": "duct", "prompt": "Make a rectangular airflow duct 120 mm long, 55 mm wide, 35 mm tall, with 3 mm walls, open at both ends along its length, and four 3 mm through holes in the top wall in a 36 x 36 mm square pattern centred on the top face.",
+     "answers": {"default": "As specified; the open ends are the two 55 x 35 faces."},
+     "grade": {"bounds_mm": [120, 55, 35], "parts": 1, "volume_mm3": {"expect": "120*55*35 - 114*55*29 - 4*pi*1.5^2*3", "tolerance_pct": 2}, "through_holes": {"count": 4, "diameter_mm": 3, "axis": "z", "tolerance_mm": 0.1}}},
+    {"id": "enclosure", "prompt": "Make a two-part project box: base 90 x 60 x 25 mm outside with 2 mm walls and floor, open top, plus a separate flat lid 90 x 60 x 3 mm placed beside it with at least a 5 mm gap for printing.",
+     "answers": {"default": "No cutouts, no lip needed; just base and lid."},
+     "grade": {"parts": 2, "part_bounds_mm": [[90, 60, 25], [90, 60, 3]], "min_part_gap_mm": 5, "part_volume_mm3": [{"expect": "90*60*25 - 86*56*23", "tolerance_pct": 2}, {"expect": "90*60*3", "tolerance_pct": 2}]}},
+    {"id": "edit_parameter", "prompt": "Make a 50 x 30 x 6 mm plate. Then, once it is saved, change its length to 70 mm using the existing parameter.",
+     "answers": {"default": "Yes, change the existing length parameter to 70."},
+     "grade": {"bounds_mm": [70, 30, 6], "parts": 1, "min_revisions": 2}},
+    {"id": "vase", "prompt": "Make a decorative vase about 120 mm tall with a 40 mm base, widening to about 70 mm near the top and narrowing to a 50 mm mouth, hollow with 2 mm walls, open at the top.",
+     "answers": {"default": "Any pleasing profile is fine; keep it printable."},
+     "grade": {"parts": 1, "bounds_range_mm": {"z": [110, 130], "x": [60, 80]}, "kinds_any": ["revolve", "loft"], "hollow": true}}
+  ]
+}
