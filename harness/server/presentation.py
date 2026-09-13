@@ -5,6 +5,7 @@ import re
 import shutil
 import time
 import uuid
+import zipfile
 from .projects import atomic_json
 from .edit_guard import acknowledge_saved, inventory
 
@@ -21,6 +22,26 @@ async def present_revision(session):
     name = 'model.FCStd' if freecad else 'model.scad'
     target = working / (name if freecad else f"{metadata['head']}_{token[:8]}.scad")
     shutil.copyfile(project.file(metadata['head'], name), target)
+    if not freecad:
+        # Source builds may import meshes or include sibling files. Open a
+        # complete disposable snapshot, never the editable source directory.
+        entry = next(r for r in metadata['revisions'] if r['id'] == metadata['head'])
+        if 'source.zip' in entry['sha256'] and metadata['design'].get('language') == 'openscad':
+            from .source_workspace import SourceWorkspace
+            source = working / 'source'
+            source.mkdir()
+            with zipfile.ZipFile(project.file(metadata['head'], 'source.zip')) as archive:
+                for item in archive.infolist():
+                    relative = item.filename
+                    SourceWorkspace(project).file(relative)  # same path/link policy as the source workspace
+                    file = source / relative
+                    if item.is_dir():
+                        file.mkdir(parents=True, exist_ok=True)
+                    else:
+                        file.parent.mkdir(parents=True, exist_ok=True)
+                        file.write_bytes(archive.read(item))
+            target.write_text('include <source/' + metadata['design']['entrypoint'] + '>\n')
+        shutil.copyfile(project.file(metadata['head'], 'model.stl'), working / 'model.stl')
     if freecad:
         atomic_json(session.state_dir / 'open-revision.json', {'token': token,
                     'result': metadata['geometry']['result_object']})

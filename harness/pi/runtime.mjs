@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { imageContext } from './image-context.mjs';
+import { workspaceTools } from './workspace-tools.mjs';
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import {
   createAgentSession, DefaultResourceLoader, defineTool, ModelRuntime,
@@ -32,11 +33,8 @@ function redact(value) {
   return value;
 }
 
-function tool(definition) {
-  const fn = definition.function;
-  return defineTool({
-    ...fn, label: fn.name, executionMode: 'sequential',
-    execute: (id, args, signal) => new Promise((resolve, reject) => {
+function invoke(name, args, signal, id = crypto.randomUUID()) {
+  return new Promise((resolve, reject) => {
       const abort = () => {
         pendingTools.delete(id);
         send({ type: 'tool_cancel', id });
@@ -50,9 +48,14 @@ function tool(definition) {
         if (reply.isError) reject(new Error(reply.content.filter(c => c.type === 'text').map(c => c.text).join('\n')));
         else resolve({ content: reply.content, details: reply.details || {} });
       });
-      send({ type: 'tool_call', id, name: fn.name, arguments: args });
-    }),
+      send({ type: 'tool_call', id, name, arguments: args });
   });
+}
+
+function tool(definition) {
+  const fn = definition.function;
+  return defineTool({ ...fn, label: fn.name, executionMode: 'sequential',
+    execute: (id, args, signal) => invoke(fn.name, args, signal, id) });
 }
 
 async function configure(modelConfig) {
@@ -139,7 +142,7 @@ async function initialize(options) {
   await loader.reload();
   ({ session } = await createAgentSession({ cwd: config.cwd, agentDir, modelRuntime: runtime, model,
     thinkingLevel: config.model.thinking === false ? 'off' : (config.model.effort || 'medium'),
-    noTools: 'builtin', customTools: config.tools.map(tool), resourceLoader: loader,
+    noTools: 'builtin', customTools: [...config.tools.map(tool), ...(config.workspace ? workspaceTools(invoke) : [])], resourceLoader: loader,
     settingsManager: settings, sessionManager: manager }));
   session.setActiveToolsByName(config.activeTools);
   session.subscribe(event => {

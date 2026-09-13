@@ -149,9 +149,15 @@
               <h3>Tools &amp; history</h3>
               <div class="model-tools"><label>Tools <select id="engine-select" aria-label="Modeling tools"><option value="hybrid">Native + visual</option><option value="visual">Visual only</option></select></label><button id="btn-use-saved" class="btn sm" title="Future native edits use the saved recipe, not unsaved viewport changes. Open documents are preserved.">Use saved revision</button></div>
               <div class="model-tools"><label>History <select id="revision-select" aria-label="Saved revisions"></select></label><button id="btn-restore" class="btn sm">Restore as new revision</button></div>
-              <p id="model-warning">Native tools support parametric solids made from primitives and booleans. Other operations use visual controls.</p>
+              <p id="model-warning">Edit Python or OpenSCAD source, draw custom profiles, and inspect saved geometry from any direction. Each successful build keeps a revision.</p>
             </section>
           </div>
+          <details id="workspace-editor" class="workspace-editor">
+            <summary>Source &amp; requirements</summary>
+            <div class="workspace-toolbar"><label>File <select id="workspace-file" aria-label="Workspace file"></select></label><button id="workspace-reload" class="btn sm" type="button">Reload file</button><button id="workspace-save" class="btn sm" type="button" disabled>Save file</button></div>
+            <textarea id="workspace-content" aria-label="Workspace file content" spellcheck="false" rows="14"></textarea>
+            <div class="workspace-toolbar"><label>Build <select id="workspace-entry" aria-label="Build entrypoint"></select></label><button id="workspace-build" class="btn sm" type="button" disabled>Build model</button><span id="workspace-status" role="status"></span></div>
+          </details>
           <details id="model-research" class="hidden"><summary>Sources &amp; assumptions</summary><div id="model-research-content"></div></details>
           <p class="model-disclaimer">Measurements describe the saved revision, not unsaved viewport edits. A valid solid is not certification of every requested feature. All revisions are retained.</p>
         </div>

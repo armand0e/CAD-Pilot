@@ -71,8 +71,11 @@ def geometry_summary(geometry, state=None):
     if not isinstance(geometry, dict):
         return geometry
     translate = (lambda text: describe_features(text, state.get('feature_operations', {}), None)) if isinstance(state, dict) else (lambda text: text)
-    keep = ('valid_solid', 'solid_count', 'volume_mm3', 'bounds_mm', 'min_mm', 'max_mm', 'parts')
+    keep = ('valid_geometry', 'valid_solid', 'solid_count', 'volume_mm3', 'bounds_mm', 'min_mm', 'max_mm', 'parts', 'representation', 'face_count', 'result_object')
     summary = {k: geometry[k] for k in keep if k in geometry}
+    if geometry.get('faces'):
+        summary['faces'] = geometry['faces'][:20]
+        summary['faces_notice'] = 'First 20 saved faces. cad_inspect query=faces returns actual paginated faces with revision-specific IDs.'
     if geometry.get('references'):
         summary['references'] = [{k: v for k, v in r.items() if k in ('feature', 'file', 'min_mm', 'max_mm', 'parts')} for r in geometry['references']]
     if geometry.get('views'):
@@ -531,7 +534,7 @@ class AgentRunner:
         self.web_enabled = enabled and self.research_tool.enabled
         if self._pi_bridge and not self.web_enabled:
             for task in list(self._pi_bridge.tools.values()):
-                if task.get_name() in ('research', 'research_images'):
+                if task.get_name() in ('research', 'research_images', 'research_dimensions'):
                     task.cancel()
         # Cancels the active browser/model request through _inference, including
         # context/proxy teardown. Saved sources are deliberately retained.
@@ -1428,6 +1431,8 @@ class AgentRunner:
                 settle('completed', viewed['label'])
                 return {'result': {k: v for k, v in viewed.items() if k != 'path'}, 'failed': False, 'free': True}
             # ---- geometry and workspace tools: candidate -> kernel -> commit ----
+            if (ctx['saved'].get('design') or {}).get('format') == 'source-v1':
+                raise ValueError('This model is built from source. Edit model.py/model.scad with Pi file tools, then cad_build; typed operations cannot overwrite a source model.')
             operation_limit = int(self.config['agent'].get('native_max_steps', 0))
             if operation_limit and self.completed_steps >= operation_limit:
                 raise ValueError('Operation budget for this session is used up; tell the user and stop.')

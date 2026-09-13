@@ -371,3 +371,10 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 
 /* No focus ring or border change on the message box; the card itself is the affordance. */
 #composer-input:focus, #composer-input:focus-visible { outline: none !important; box-shadow: none; }
+.workspace-editor { margin-top: 16px; }
+.workspace-editor summary { cursor: pointer; padding: 8px 0; }
+.workspace-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
+.workspace-toolbar label { display: flex; align-items: center; gap: 8px; max-width: 100%; }
+.workspace-toolbar select { min-width: 0; max-width: 240px; background: var(--bg-elev); }
+#workspace-content { width: 100%; resize: vertical; min-height: 220px; font: 12px/1.5 monospace; padding: 12px; background: var(--surface-inset); border: 1px solid var(--hairline2); border-radius: var(--r-sm); }
+#workspace-status { color: var(--text3); font-size: 12px; }

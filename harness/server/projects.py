@@ -16,7 +16,8 @@ from .design import validate_design, scad_source
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('design.json', 'geometry.json', 'model.FCStd', 'model.scad', 'model.step', 'model.stl')
-OPTIONAL_FILES = ('research.json', 'workspace.json', 'view-iso.png', 'view-top.png', 'view-front.png', 'view-right.png')
+OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'design-spec.json', 'parts.zip',
+                  'view-iso.png', 'view-top.png', 'view-front.png', 'view-right.png')
 REFERENCE_DIR = 'references'
 
 
@@ -168,8 +169,8 @@ class Project:
             metadata = self.read()
             if metadata['head'] != expected_head:
                 raise ValueError('Project changed during generation. Re-read the current revision before editing.')
-            if len(metadata['revisions']) >= 100:
-                raise ValueError('Project reached 100 revisions; create a new project to continue')
+            if len(metadata['revisions']) >= 9999:
+                raise ValueError('Project reached 9999 revisions; create a new project to continue')
             # Orphaned revision directories from an interrupted commit are never overwritten.
             index = max([int(p.name[1:]) for p in self.path.iterdir() if re.fullmatch(r'r[0-9]{4}', p.name)] or [0]) + 1
             revision = f'r{index:04d}'
@@ -184,6 +185,10 @@ class Project:
             if (stage / 'workspace.json').is_file():
                 entry['operation_contract'] = 'native-operations-v1'
                 entry['operation_compiler_sha256'] = hashlib.sha256((ROOT / 'server/operations.py').read_bytes()).hexdigest()
+            if design.get('format') == 'source-v1':
+                entry['compiler'] = 'source-cad-v1'
+                entry['compiler_sha256'].update({name: hashlib.sha256((ROOT / 'server' / name).read_bytes()).hexdigest()
+                                                for name in ('source_program.py', 'source_kernel.py', 'cad_paths.py')})
             if restored_from:
                 original = next(r for r in metadata['revisions'] if r['id'] == restored_from)
                 entry['compiler'] = original.get('compiler', 'legacy-native-csg')

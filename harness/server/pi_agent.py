@@ -15,7 +15,10 @@ from collections import Counter
 from pathlib import Path
 
 from .attachments import image_part, image_path, saved_image_ids
-from .operations import OPERATION_SYSTEM, TOOL_DEFINITIONS, compile_workspace, migrate, workspace
+from .operations import TOOL_DEFINITIONS, compile_workspace, migrate, workspace
+from .source_workspace import SourceWorkspace
+from .workspace_tools import TOOLS as WORKSPACE_TOOLS, NAMES as WORKSPACE_NAMES, PI_NAMES, PROMPT as WORKSPACE_PROMPT, dispatch
+from .dimension_research import DELEGATE, REPORT, RESEARCH_TOOLS, PROMPT as RESEARCH_PROMPT, investigate, submit
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -148,6 +151,12 @@ class PiBridge:
         self.thought_text = ''
         self.tool_inputs = {}
 
+    def active_names(self):
+        names = [t['function']['name'] for t in self.runner._tool_definitions()]
+        if getattr(self.runner, 'research_profile', False):
+            return [n for n in names if n in RESEARCH_TOOLS] + ['submit_research']
+        return names + WORKSPACE_NAMES + PI_NAMES + (['research_dimensions'] if self.runner.web_enabled else [])
+
     async def send(self, message):
         if not self.proc or self.proc.returncode is not None:
             raise RuntimeError('Pi runtime is not running')
@@ -190,8 +199,15 @@ class PiBridge:
         self.reader = asyncio.create_task(self._read())
         self.stderr = asyncio.create_task(self._drain_stderr())
         self.model = model_config(self.runner)
-        definitions = TOOL_DEFINITIONS
-        self.active_tools = [t['function']['name'] for t in self.runner._tool_definitions()]
+        research = getattr(self.runner, 'research_profile', False)
+        if research:
+            definitions = [t for t in TOOL_DEFINITIONS if t['function']['name'] in RESEARCH_TOOLS] + [REPORT]
+        else:
+            work = SourceWorkspace(self.ctx['project'])
+            work.ensure()
+            work.record_inputs(self.runner.transcript.read() if self.runner.transcript else self.runner.events)
+            definitions = TOOL_DEFINITIONS + WORKSPACE_TOOLS + [DELEGATE]
+        self.active_tools = self.active_names()
         definitions = [t for t in definitions if t['function']['name'] != 'inspect']
         definitions.append({'type': 'function', 'function': {'name': 'inspect',
             'description': 'Read the current CAD workspace, agreed brief, saved research, image IDs, selection, measurements and rendered views. Use at the start of a task and after resuming.',
@@ -201,8 +217,8 @@ class PiBridge:
             session_file = None
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
-            tools=definitions, activeTools=self.active_tools,
-            systemPrompt=OPERATION_SYSTEM + '\nUse inspect to read the existing project before working. Images have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
+            tools=definitions, activeTools=self.active_tools, workspace=not research,
+            systemPrompt=(RESEARCH_PROMPT if research else WORKSPACE_PROMPT) + '\nImages have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
         self.runner._pi_new_session = False
         self.runner.pi_session = {'id': result['sessionId'], 'file': result['sessionFile'], 'runtime': 'pi-coding-agent', 'version': '0.85.1'}
         consumed = set(result.get('consumed', []))
@@ -328,8 +344,10 @@ class PiBridge:
                 runner.emit({'t': 'thinking_done', 'operation_id': 'thinking-' + self.message_id,
                              'turn_id': self.message_turn, 'status': status})
         elif kind == 'tool_execution_end':
+            result = event.get('result') or {}
+            error_text = '\n'.join(c.get('text', '') for c in result.get('content', []) if c.get('type') == 'text') if isinstance(result, dict) and event['isError'] else ''
             runner.emit({'t': 'tool_settled', **self.streams.get(event['toolCallId'], {'operation_id': event['toolCallId']}),
-                         'status': 'failed' if event['isError'] else 'completed'})
+                         'status': 'failed' if event['isError'] else 'completed', 'message': error_text[:900]})
         elif kind == 'compaction_start':
             runner.emit({'t': 'note', 'message': 'Pi is compacting the conversation.'})
         elif kind == 'compaction_end':
@@ -340,7 +358,13 @@ class PiBridge:
     def inspect(self):
         from .agent import geometry_summary
         runner, ctx = self.runner, self.ctx
+        if getattr(runner, 'research_profile', False):
+            return {'research': runner.research, 'reference_images': [{k:v for k,v in i.items() if k != 'path'} for i in runner.attachments + runner.pending_images]}
+        work = SourceWorkspace(ctx['project'])
+        work.record_inputs(runner.transcript.read() if runner.transcript else runner.events)
         return {'head': ctx['expected_head'], 'workspace': ctx['ledger'], 'state': ctx['state'],
+                'source_workspace': work.describe(),
+                'design_specification': work.spec_context(),
                 'geometry': geometry_summary(ctx['geometry'], ctx['state']), 'design_brief': runner.design_brief,
                 'research': runner.research, 'library_facts': runner.library_facts,
                 'web_search_enabled': runner.web_enabled,
@@ -372,8 +396,24 @@ class PiBridge:
                 await runner._interruptible(runner._wake.wait())
             if runner._stop.is_set():
                 raise asyncio.CancelledError
+            if getattr(runner, 'research_profile', False) and message['name'] not in RESEARCH_TOOLS:
+                raise ValueError('The dimension researcher has read-only research tools; CAD and workspace edits are unavailable')
             if message['name'] == 'inspect':
                 content = [{'type': 'text', 'text': json.dumps(self.inspect())}] + self.views()
+            elif message['name'] == 'submit_research' and getattr(runner, 'research_profile', False):
+                content = [{'type': 'text', 'text': json.dumps(submit(runner, message['arguments']))}]
+            elif message['name'] == 'research_dimensions':
+                result = await investigate(runner, message['arguments'])
+                content = [{'type': 'text', 'text': json.dumps(result)}]
+            elif message['name'] in WORKSPACE_NAMES + ['__workspace']:
+                result = await dispatch(self, message['name'], message['arguments'])
+                content = [{'type': 'text', 'text': json.dumps(result)}]
+                if message['name'] == 'cad_build':
+                    content += self.views()
+                if result.get('image'):
+                    item = result['image']
+                    content += [pi_image(image_path(ctx['project'].path, item['id']), id=item['id'], kind='inspection')]
+                runner._save_conversation()
             else:
                 if message['name'] in ('research', 'research_images') and not runner.web_enabled:
                     raise ValueError('Web search is disabled by the user.')
@@ -428,14 +468,15 @@ class PiBridge:
 async def run_pi(runner, intent, *, persistent=False):
     project = runner.session.project
     saved = project.public()
-    ledger = migrate(saved.get('workspace') or workspace(saved['design']))
+    source = (saved.get('design') or {}).get('format') == 'source-v1'
+    ledger = migrate(saved.get('workspace') or workspace(None if source else saved['design']))
     draft = project.path / 'draft-workspace.json'
     if draft.is_file():
         pending = json.loads(draft.read_text())
-        if pending.get('base_head') == saved['head']:
+        if not source and pending.get('base_head') == saved['head']:
             ledger = migrate(pending['workspace'])
     ctx = {'project': project, 'ledger': ledger, 'expected_head': saved['head'], 'geometry': saved['geometry'],
-           'state': compile_workspace(ledger)[1],
+           'state': {'format': 'source-v1', 'bodies': saved['geometry']['parts']} if source else compile_workspace(ledger)[1],
            'saved': saved, 'tried': set(), 'tried_geometry': set(), 'reviews': {}, 'changed': False}
     bridge = PiBridge(runner, ctx)
     runner._pi_bridge = bridge
@@ -449,7 +490,7 @@ async def run_pi(runner, intent, *, persistent=False):
             if bridge.error:
                 raise bridge.error
             await runner._interruptible(bridge.sync_model())
-            active_tools = [t['function']['name'] for t in runner._tool_definitions()]
+            active_tools = bridge.active_names()
             if active_tools != bridge.active_tools:
                 await runner._interruptible(bridge.request('tools', active=active_tools))
                 bridge.active_tools = active_tools

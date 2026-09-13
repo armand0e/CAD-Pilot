@@ -230,6 +230,63 @@ async def project_info(project_id: str):
         raise HTTPException(409, str(error)) from error
 
 
+@app.get('/api/projects/{project_id}/workspace')
+async def source_workspace(project_id: str):
+    from .source_workspace import SourceWorkspace
+    try:
+        work = SourceWorkspace(_project(project_id))
+        return await asyncio.to_thread(work.describe)
+    except (ValueError, OSError) as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.get('/api/projects/{project_id}/investigations/{investigation_id}')
+async def dimension_investigation(project_id: str, investigation_id: str):
+    from .projects import Project
+    try:
+        project = Project(_project(project_id).path / 'research-tasks', investigation_id)
+        # Explicitly requested detail stays out of the parent model's context.
+        from .transcript import Transcript
+        report = project.path / 'dimension-report.json'
+        return {'investigation_id': investigation_id,
+                'report': json.loads(report.read_text()) if report.is_file() else None,
+                'events': Transcript(project.path / 'chat.sqlite3').read()}
+    except (ValueError, OSError) as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@app.get('/api/projects/{project_id}/workspace/file')
+async def source_file(project_id: str, path: str):
+    from .source_workspace import SourceWorkspace, digest, MAX_TEXT
+    try:
+        work = SourceWorkspace(_project(project_id))
+        work.ensure()
+        file = work.file(path)
+        if not file.is_file() or file.stat().st_size > MAX_TEXT:
+            raise ValueError('Text editor supports files up to 1 MiB')
+        data = file.read_bytes()
+        return {'path': path, 'content': data.decode('utf-8'), 'sha256': digest(data)}
+    except (ValueError, OSError) as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.put('/api/projects/{project_id}/workspace/file')
+async def save_source_file(project_id: str, body: dict):
+    from .source_workspace import SourceWorkspace
+    if any(s.project and s.project.id == project_id and (getattr(s, 'project_busy', False) or s.agent and s.agent.active)
+           for s in manager.sessions.values()):
+        raise HTTPException(409, 'Stop the agent before editing project files')
+    try:
+        if not isinstance(body.get('content'), str) or not isinstance(body.get('sha256'), str):
+            raise ValueError('Supply text and the file hash from the last read')
+        work = SourceWorkspace(_project(project_id))
+        work.ensure()
+        await work.fs({'action': 'write', 'path': body.get('path'), 'content': body['content'], 'expected_sha256': body['sha256']})
+        return await source_file(project_id, body['path'])
+    except (ValueError, OSError) as error:
+        raise HTTPException(409, str(error)) from error
+
+
 @app.get('/api/projects/{project_id}/{revision}/{name}')
 async def artifact(project_id: str, revision: str, name: str):
     try:
@@ -261,6 +318,10 @@ async def project_operation(session_id: str, body: dict):
                 await present_revision(session)
             except Exception as error:
                 return session.project.public() | {'warning': 'Revision restored, but the viewport did not open it: ' + str(error)}
+        elif body.get('operation') == 'source_build':
+            from .workspace_tools import build_revision
+            saved, warning = await build_revision(session, body.get('entrypoint'), body.get('expected_head'))
+            return saved | ({'warning': warning} if warning else {})
         else:
             raise ValueError('Unknown project operation')
         return session.project.public()

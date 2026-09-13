@@ -9,10 +9,11 @@ The visual policy uses the *same* display: screenshots in, strict-JSON grid acti
 current screenshot).
 
 The default FreeCAD/OpenSCAD chat runs on **Pi's `AgentSession` SDK**
-(`@earendil-works/pi-coding-agent` 0.85.1), with CADPilot's typed CAD tools.
+(`@earendil-works/pi-coding-agent` 0.85.1), with Pi's file/shell tools and CADPilot's CAD tools.
 Pi owns model requests, the agent/tool loop, conversation persistence, steering, retries and
 compaction. CADPilot owns CAD execution, geometry validation, revisions, research and the UI.
-Model-written Python is never executed. The trained desktop policy is still available in
+Model-written Python runs in a networkless project sandbox; a separate trusted kernel
+validates its exported shapes. The trained desktop policy is still available in
 **Visual only** mode for evaluating GUI actions; it uses its original trajectory harness.
 The **Model** panel exposes saved dimensions, measured geometry, downloads and revision history.
 Choose **Visual only** there when evaluating or using the trained desktop policy alone.
@@ -148,7 +149,55 @@ The launcher offers recent saved parts. Pi restores the project conversation fro
 This does **not** restore unsaved GUI edits, full application state, or the old live event stream.
 Save manual changes separately before closing a session or restarting the server.
 
-### Native tools and saved revisions
+### Editable source, inspection and specifications
+
+The Model panel's **Source & requirements** editor exposes `model.py`, `model.scad`
+and `design-spec.json`. Stop the assistant to edit these yourself; save the file, then
+build the model. Saving text does not alter saved geometry. Concurrent edits are rejected
+instead of overwriting another writer's file. Drafts and successful revisions are separate.
+
+Pi's upstream `read`, `write`, `edit` and `bash` implementations use custom filesystem/shell
+operations scoped to `/work`. Bash and generated CAD Python have no host home, credentials,
+other projects or network. They have a read-only FreeCAD runtime, an 8 GiB address-space
+limit and 64 MiB file limit. Model inference and source builds have no fixed wall-clock
+deadline; cancellation kills the sandbox process group. Bash can specify its own timeout.
+
+| Tool | Purpose |
+|---|---|
+| `cad_build` | Build a Python/OpenSCAD entrypoint, validate in a fresh kernel, save source/spec/exports and open the revision |
+| `create_path_body` | Draft a custom SVG path body with lines, Bézier curves and holes, for extrusion or revolution; no primitive required |
+| `cad_inspect` | Named objects, paged actual faces, minimum distance/intersection and cross sections, with revision-qualified evidence |
+| `cad_render` | All six directions, isometric or arbitrary camera; body isolation, highlighting and section clipping |
+| `spec_read`, `spec_update` | Persistent requirements, accepted decisions, coordinate conventions, references, provenance and geometry links |
+| `cad_checkout` | Recover current revision's source after changing the project base; protects unsaved source edits |
+| `research_dimensions` | A separate Pi research session investigates missing dimensions and returns a compact cited report, assumptions and unknowns |
+
+FreeCAD source uses the full Python/Part APIs and exports named shapes through `parts`.
+`cad_paths.py` supports SVG path `d` data, not full SVG documents. Lines and quadratic/cubic
+Béziers remain native; elliptical arcs use cubic approximation. See [the workspace guide](knowledge/source-workspace.md).
+OpenSCAD keeps its original source and generates a mesh; its FCStd/STEP exports are explicitly
+marked as faceted BREP. Contacting assembly meshes can be non-manifold, so `parts.zip`
+contains separately audited STL files. Geometry validity does not establish fit.
+
+Each source revision includes `source.zip` and `design-spec.json`. Specification versions,
+user inputs and inspection evidence also persist separately, including between builds and
+across Pi compaction. Verification evidence belongs to a revision; rebuilding makes prior
+verification stale. Unknown source/input IDs and stale specification writes are rejected.
+The researcher/modeler still has to interpret evidence correctly.
+
+Dimension research sessions have research/image tools only: no CAD, shell, file-writing,
+recursive delegation or direct user-question tools. The caller supplies the exact part,
+missing dimensions and selected reference images. Each documented value must cite an
+opened page/PDF and a matching quote. Their full Pi conversation and UI transcript remain
+under `research-tasks/<id>`; the main agent receives only the report and supporting extracts.
+The report includes a detail URL for inspecting the investigation. Stopping the parent
+cancels its child session. Both use the selected model/provider settings.
+
+Older operation-based projects remain editable with the tools below. Switching to source
+uses a frozen copy of the saved FCStd as a base. After a source build, edit the source;
+typed operations refuse to overwrite it.
+
+### Typed native tools and saved revisions
 
 With `agent.native_operations: true` (the default), each active CAD project runs a Pi SDK
 session in a Node subprocess. Tools are generated from `server/operations.py: TOOL_DEFINITIONS`;
@@ -172,7 +221,7 @@ can be one `set_parameter`. The tool set is deliberately general:
 | `review` | advisory model review of the saved model against the request and brief |
 | `inspect` | numeric bounds, solid wall bands per face, unused parameters |
 | `brief` | write/replace the design brief (dimensions with origin: user / sourced / assumed) |
-| `ask_question` | a question with 2-6 suggested answers (single or multi-select); the user can also type. Answered in-turn: the run never pauses |
+| `ask_question` | a question with 0-6 suggested answers (single or multi-select) and its own text-entry option; chat drafts are independent |
 | `research`, `ask`, `finish` | web lookup, free-text question (also in-turn), complete with a summary |
 
 Every checkpoint renders iso/top/front/right views (`view-*.png`, painter-rendered in the sandbox)

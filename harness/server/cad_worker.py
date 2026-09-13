@@ -204,7 +204,7 @@ def reference_shape(file_name, position, rotation):
 def face_table(shape, limit=400):
     rows = []
     for index, face in enumerate(shape.Faces[:limit], 1):
-        box = face.BoundBox
+        box = face.optimalBoundingBox(False, False)
         try:
             u = (face.ParameterRange[0] + face.ParameterRange[1]) / 2
             v = (face.ParameterRange[2] + face.ParameterRange[3]) / 2

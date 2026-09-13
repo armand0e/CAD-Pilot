@@ -1,5 +1,6 @@
 import {ChatPanel} from './chat/panel.js';
 import {icon} from './chat/components.js';
+import { WorkspaceEditor } from './workspace-editor.js';
 
 // CADPilot frontend — session tabs, resilient streams, agent timeline, action overlay.
 
@@ -43,6 +44,7 @@ function syncControls() {
   else if (state.phase === "awaiting" && state.running) $("composer-hint").textContent = "Send the next objective, or switch to Auto";
   else if (state.running) $("composer-hint").textContent = "Send changes at any time · Your guidance updates the plan";
   else if (state.canContinue && !state.freshTask) $("composer-hint").textContent = "Continue or refine this part · New task starts a separate goal";
+  workspaceEditor.sync();
 }
 function connectionStatus() {
   const el = $("connection-status");
@@ -208,12 +210,13 @@ async function loadProject() {
 function renderProject(project) {
   if (state.session?.project_id !== project.id) return;
   state.project = project;
+  workspaceEditor.projectChanged(project);
   $('model-panel').classList.remove('hidden');
   $('model-name').textContent = project.head ? `${project.name} · ${project.head}` : 'No saved revision yet';
   $('model-status').textContent = project.geometry?.valid_solid ? '✓ Valid solid' : project.geometry?.valid_geometry ? `✓ ${project.geometry.solid_count} valid parts` : 'Native tools ready';
   $('model-status').dataset.state = project.geometry?.valid_solid || project.geometry?.valid_geometry ? 'valid' : 'empty';
   const g = project.geometry;
-  $('model-measurements').textContent = g ? `${g.bounds_mm.map(v=>Number(v.toFixed(3))).join(' × ')} mm · ${g.volume_mm3.toFixed(2)} mm³ · ${g.cuts.length} material-removing cuts` : 'Describe a part to create an editable model and exports.';
+  $('model-measurements').textContent = g ? `${g.bounds_mm.map(v=>Number(v.toFixed(3))).join(' × ')} mm · ${g.volume_mm3.toFixed(2)} mm³ · ${g.representation || `${g.cuts?.length||0} material-removing cuts`}` : 'Describe a part to create an editable model and exports.';
   const views = $('model-views'); if (views) { views.replaceChildren();
     if (project.head && project.geometry?.views?.length) { for (const name of ['iso', 'top', 'front']) { if (!project.geometry.views.includes(name)) continue;
       const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.loading = 'lazy'; views.append(img); } } }
@@ -222,8 +225,9 @@ function renderProject(project) {
     const item = document.createElement('span'); item.textContent = `${p.name}: ${p.value}`; $('model-parameters').append(item);
   }
   $('model-downloads').replaceChildren();
-  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe']] : []) {
-    const link = document.createElement('a'); link.textContent = `↓ ${label}`;
+  const artifacts=project.revisions.find(r=>r.id===project.head)?.sha256||{};
+  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','design-spec.json':'Requirements','parts.zip':'Part STLs'}).filter(([name])=>name in artifacts)] : []) {
+    const link = document.createElement('a'); link.textContent = `↓ ${name==='design.json'&&project.design?.format==='source-v1'?'Build info':name==='model.scad'&&project.design?.language==='freecad-python'?'OpenSCAD mesh preview':label}`;
     link.href = `/api/projects/${project.id}/${project.head}/${name}`; link.download = ''; $('model-downloads').append(link);
   }
   $('model-research').classList.toggle('hidden', !project.research);
@@ -239,6 +243,8 @@ function renderProject(project) {
   }
   syncControls();
 }
+
+const workspaceEditor = new WorkspaceEditor({getState:()=>state,onProject:renderProject,toast});
 
 async function projectOperation(body) {
   if (!state.session || state.projectBusy) return;

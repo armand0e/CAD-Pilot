@@ -20,7 +20,9 @@ class LocalWorkspaceSecurity:
             if not valid or headers.get("sec-fetch-site") == "cross-site":
                 return await JSONResponse({"detail": "Cross-origin control requests are not allowed"}, status_code=403)(scope, receive, send)
             # Control requests are tiny; only the attachment upload route may carry a file (40 MiB + multipart framing).
-            limit = 41 * 1024 * 1024 if scope.get("path", "").endswith("/attachments") else 32768
+            path = scope.get('path', '')
+            limit = (41 * 1024 * 1024 if path.endswith('/attachments') else
+                     2 * 1024 * 1024 if path.endswith('/workspace/file') and scope.get('method') == 'PUT' else 32768)
             try:
                 if int(headers.get("content-length", "0")) > limit:
                     return await JSONResponse({"detail": "Request too large"}, status_code=413)(scope, receive, send)
