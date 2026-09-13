@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { imageContext } from './image-context.mjs';
 import { workspaceTools } from './workspace-tools.mjs';
+import { contextBudget } from './context-budget.mjs';
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import {
   createAgentSession, DefaultResourceLoader, defineTool, ModelRuntime,
@@ -64,8 +65,8 @@ async function configure(modelConfig) {
   if (!Number.isSafeInteger(maxImages) || maxImages < 1) throw new Error('Images per request must be a positive integer');
   const contextWindow = c.contextWindow || 32768;
   // OpenAI-compatible local servers share the context window between input
-  // and output. Pi clamps each request to its remaining context and handles
-  // compaction; an invented 8k ceiling can consume the whole reply in thinking.
+  // and output. Pi estimates remaining context and handles compaction; vLLM's
+  // exact tokenizer can repair rejected allocations through the transport below.
   const maxTokens = c.maxTokens || contextWindow;
   // The app accepts OpenAI-compatible endpoints. Pi implements their transport
   // and model-specific thinking conventions; credentials stay in memory.
@@ -74,7 +75,17 @@ async function configure(modelConfig) {
     chatTemplateKwargs: { enable_thinking: { $var: 'thinking.enabled' }, preserve_thinking: true,
       reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true } },
     ...(c.thinkingBudget ? { thinkingTokenBudgetField: 'thinking_token_budget' } : {}) });
-  runtime.registerProvider('cadpilot', { baseUrl: c.baseUrl, api: 'openai-completions', models: [{
+  const budget = contextBudget({
+    onRequest: payload => {
+      // Record the actual transmitted payload, including allocation retries and
+      // summary requests, without image blobs or API credentials.
+      const path = join(config.cwd, 'last-model-request.json');
+      writeFileSync(path + '.pending', JSON.stringify(redact(payload)), { mode: 0o600 });
+      renameSync(path + '.pending', path);
+    },
+    onAdjustment: () => send({ type: 'budget_adjustment' }),
+  });
+  runtime.registerProvider('cadpilot', { baseUrl: c.baseUrl, api: 'openai-completions', streamSimple: budget.stream, models: [{
     id: c.id, name: c.id, reasoning: c.qwenTemplate || c.thinking !== false, input: ['text', 'image'],
     ...(c.qwenTemplate ? { thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'medium', high: 'xhigh', xhigh: 'xhigh' } } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow, maxTokens, compat,
@@ -129,13 +140,6 @@ async function initialize(options) {
         const projected = projectImages(event.messages, maxImages);
         send({ type: 'image_context', ...projected.usage });
         return { messages: projected.messages };
-      });
-      pi.on('before_provider_request', (event) => {
-        // Readable diagnostics without image blobs or API credentials. Never
-        // replace Pi's payload, messages, or context in this observer.
-        const path = join(config.cwd, 'last-model-request.json');
-        writeFileSync(path + '.pending', JSON.stringify(redact(event.payload)), { mode: 0o600 });
-        renameSync(path + '.pending', path);
       });
     }],
   });

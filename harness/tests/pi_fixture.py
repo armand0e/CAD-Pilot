@@ -37,7 +37,7 @@ def pi_model(runner, respond):
                 self.send_response(response['status'])
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'error': {'message': response['error']}}).encode())
+                self.wfile.write(json.dumps(response.get('error_body') or {'error': {'message': response['error']}}).encode())
                 return
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')

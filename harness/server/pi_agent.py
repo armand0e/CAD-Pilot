@@ -265,6 +265,8 @@ class PiBridge:
                     self.runner.emit({'t': 'model_response', 'timeline': False,
                                       'turn_id': self.current_turn,
                                       **{k: message.get(k) for k in ('stopReason', 'usage', 'model', 'hasText', 'toolNames')}})
+                elif kind == 'budget_adjustment':
+                    self.runner.emit({'t': 'note', 'message': 'Retrying with the model server calculating the available response space.'})
                 elif kind == 'usage' and message.get('usage'):
                     usage = message['usage']
                     self.runner.context_usage = {'prompt_tokens': usage.get('tokens'), 'completion_tokens': 0,

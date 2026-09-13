@@ -1,13 +1,28 @@
 """Run the real Pi SDK against controlled provider endings and output limits."""
 import asyncio
+import copy
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from pi_fixture import pi_model
 from server.agent import AgentRunner
 from server.projects import Project
+
+
+class ContextBudgetTransportTests(unittest.TestCase):
+    def test_transport_allocation_and_cancellation(self):
+        root = Path(__file__).resolve().parents[1]
+        node = os.environ.get('CADPILOT_NODE') or shutil.which('node') or str(root / '.node/bin/node')
+        result = subprocess.run([node, '--test', str(root / 'tests/context-budget.test.mjs')],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class PiCompletionTests(unittest.IsolatedAsyncioTestCase):
@@ -39,6 +54,51 @@ class PiCompletionTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(request['max_tokens'], 8192)
         self.assertLess(request['max_tokens'], 32768)
         self.assertEqual(self.records('model_response')[0]['stopReason'], 'stop')
+
+    async def test_vllm_output_allocation_after_automatic_compaction_recovers_same_request(self):
+        self.runner.task_text = 'Existing enclosure'
+        self.runner.agent_history = [{'role': 'user' if i % 2 == 0 else 'assistant',
+            'content': ('The SD slot stays on the narrow edge. ' if i == 0 else str(i) + ' ') + 'old notes ' * 1600}
+            for i in range(12)]
+        calls = []
+        async def reply(endpoint, messages, tools, **kwargs):
+            body = copy.deepcopy(self.runner.pi_test_requests[-1])
+            calls.append(body)
+            if len(calls) == 1:
+                return {'tool_calls': [{'id': 'read-before-compaction', 'name': 'design_notes',
+                                        'arguments': '{"topic":"enclosures"}'}],
+                        'usage': {'prompt_tokens': 111508, 'completion_tokens': 29, 'total_tokens': 111537}}
+            if len(calls) == 2:
+                self.assertFalse(tools, 'This must be Pi\'s automatic summary request')
+                return {'content': 'The SD slot stays on the narrow edge. Continue the enclosure; notes were read.'}
+            if len(calls) == 3:
+                maximum = body['max_tokens']
+                lower_bound = 131072 - maximum + 1
+                return {'status': 400, 'error_body': {'error': {
+                    'message': f"This model's maximum context length is 131072 tokens. However, you requested {maximum} output tokens and your prompt contains at least {lower_bound} input tokens, for a total of at least 131073 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value={lower_bound})",
+                    'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}}
+            self.assertNotIn('max_tokens', body)
+            return {'content': 'Continuing with the SD slot on the narrow edge.'}
+        execute = AsyncMock(return_value={'result': {'notes': 'Detailed geometry result. ' * 1200}, 'failed': False})
+        with pi_model(self.runner, reply), patch.object(self.runner, '_execute_tool', execute):
+            self.runner.config['planner'].update(model='qwen3.8-27b', max_model_len=131072)
+            self.runner.start('Continue the enclosure', 'auto')
+            await self.until_idle()
+            self.assertEqual(self.records('error'), [])
+            self.assertEqual(len(self.records('done')), 1)
+            self.assertEqual(len(calls), 4)
+            retry = copy.deepcopy(calls[2]); retry.pop('max_tokens')
+            self.assertEqual(calls[3], retry, 'Retry only the rejected allocation; preserve messages, tools and thinking settings')
+            self.assertEqual(execute.await_count, 1, 'A completed tool must not run again during recovery')
+            self.assertTrue(any('compacting' in e['message'] for e in self.records('note')))
+            self.runner.submit_intent('Keep that orientation')
+            await self.until_idle()
+            self.assertNotIn('max_tokens', calls[-1])
+            self.assertNotIn('thinking_token_budget', calls[-1])
+            self.assertTrue(calls[-1]['chat_template_kwargs']['enable_thinking'])
+            recorded = json.loads((self.runner.session.project.path / 'last-model-request.json').read_text())
+            self.assertEqual(recorded, calls[-1], 'Diagnostics must describe the request actually transmitted')
+            await self.runner.wait_stopped()
 
     async def test_exhausted_length_is_an_error_without_success_and_next_turn_works(self):
         reply = AsyncMock(side_effect=[

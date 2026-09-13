@@ -213,6 +213,13 @@ There is no custom native context compactor or secondary native agent loop.
   32,768-token fallback. No model request deadline is enabled by default.
 - The project `last-model-request.json` records Pi's outgoing payload, with image pixels
   replaced by MIME, size and hash metadata. It contains no provider API key.
+- If vLLM rejects Pi's estimated input/output allocation, the transport retries that
+  rejected request once with vLLM calculating the output allowance from its actual
+  tokenizer and server settings. Subsequent uncapped requests on that connection use
+  this server allowance. Input, images, tools and thinking settings are preserved;
+  explicit output limits (including Pi's summary budget) remain in effect. True input
+  overflow still goes to Pi's compaction. The request diagnostic records the actual
+  transmitted payload, including allocation retries.
 
 `harness/pi/setup.sh` installs the pinned packages for native development. Docker uses
 `npm ci` and includes the same lockfile. Downloaded onboarding bundles include the Pi
