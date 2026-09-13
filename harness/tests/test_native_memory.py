@@ -126,6 +126,70 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('other narrow edge' in message_text(m) for m in received[-1] if m['role'] == 'user'))
         self.assertEqual(self.runner._native_inputs, [])
 
+    async def test_blocked_cad_batch_returns_errors_and_delivers_steering_without_pausing_pi(self):
+        calls = [{'id': f'wall-{i}', 'name': 'create_body', 'arguments':
+                  __import__('json').dumps({'id': f'wall{i}', 'name': f'Wall {i}', 'kind': 'box',
+                                           'dimensions': ['10', '2', '5'], 'at': ['0', '0', '0'],
+                                           'anchor': 'corner', 'parameters': []})}
+                 for i in range(4)]
+        reply = AsyncMock(side_effect=[{'finish_reason': 'tool_calls', 'tool_calls': calls},
+            {'content': 'The port cutouts are missing. CAD writes are blocked; your saved model is preserved.',
+             'finish_reason': 'stop'}])
+        guarded = 0
+        async def blocker(session):
+            nonlocal guarded
+            guarded += 1
+            if guarded == 1:
+                self.runner.submit_intent('I do not see the port cutouts')
+                await asyncio.sleep(.1)
+            return 'A document changed. Inspect the saved revision; do not retry writes.'
+        with pi_model(self.runner, reply), patch('server.agent.native_edit_blocker', blocker), \
+                patch.object(self.project, 'prepare', AsyncMock()) as prepare:
+            self.runner.start('Build the case', 'auto')
+            await self.until(lambda: self.runner.phase == 'awaiting')
+            self.assertFalse(self.runner.paused)
+            self.assertEqual(self.runner._native_inputs, [])
+            await self.runner.wait_stopped()
+        prepare.assert_not_awaited()
+        self.assertEqual(guarded, 4)
+        self.assertIsNone(self.project.public()['head'])
+        history = pi_messages(self.runner)
+        results = [m for m in history if m['role'] == 'toolResult']
+        self.assertEqual([m['toolCallId'] for m in results], [c['id'] for c in calls])
+        self.assertTrue(all(m['isError'] for m in results))
+        self.assertTrue(any('port cutouts' in message_text(m) for m in reply.call_args.args[1] if m['role'] == 'user'))
+
+    async def test_context_and_reasoning_changes_apply_to_next_request_in_the_same_tool_turn(self):
+        reply = AsyncMock(side_effect=[{'finish_reason': 'tool_calls', 'tool_calls': [
+            {'id': 'a', 'name': 'design_notes', 'arguments': '{"topic":"enclosures"}'}]},
+            {'content': 'Continuing with the current model settings.', 'finish_reason': 'stop'}])
+        async def execute(*args, **kwargs):
+            self.config['planner']['max_model_len'] = 131072
+            self.config['agent']['native_reasoning_effort'] = 'off'
+            return {'result': {'ok': True}, 'failed': False}
+        with pi_model(self.runner, reply), patch.object(self.runner, '_execute_tool', execute):
+            self.config['planner'].update(model='qwen3.8-27b', max_model_len=65536)
+            self.runner.start('Build', 'auto')
+            await self.until(lambda: self.runner.phase == 'awaiting')
+            await self.runner.wait_stopped()
+        first, second = self.runner.pi_test_requests
+        self.assertLess(first['max_tokens'], 65536)
+        self.assertGreater(second['max_tokens'], 65536)
+        self.assertFalse(second['chat_template_kwargs']['enable_thinking'])
+
+    async def test_rejected_live_configuration_ends_the_run_instead_of_stranding_a_tool(self):
+        reply = AsyncMock(return_value={'finish_reason': 'tool_calls', 'tool_calls': [
+            {'id': 'a', 'name': 'design_notes', 'arguments': '{"topic":"enclosures"}'}]})
+        async def execute(*args, **kwargs):
+            self.config['planner']['max_images_per_request'] = -1
+            return {'result': {'ok': True}, 'failed': False}
+        with pi_model(self.runner, reply), patch.object(self.runner, '_execute_tool', execute):
+            self.runner.start('Build', 'auto')
+            await self.until(lambda: not self.runner.active)
+        errors = [e['message'] for e in self.runner.transcript.read() if e['t'] == 'error']
+        self.assertTrue(any('could not apply the model settings' in e for e in errors), errors)
+        self.assertIsNone(self.runner._pi_bridge)
+
     async def test_pi_compaction_preserves_history_and_drives_next_request(self):
         self.runner.task_text = 'Existing project'
         self.runner.agent_history = [{'role': 'user' if i % 2 == 0 else 'assistant',

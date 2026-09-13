@@ -32,7 +32,10 @@ async def present_revision(session):
                 if result.get('token') == token:
                     if result.get('error'):
                         raise ValueError(result['error'])
-                    await acknowledge_saved(session, inventory(result.get('inventory')))
+                    baseline = inventory(result.get('inventory'))
+                    if baseline is None:
+                        raise ValueError('FreeCAD opened the revision without a complete, timestamped document receipt.')
+                    await acknowledge_saved(session, baseline)
                     return
             await asyncio.sleep(.15)
         raise ValueError('Revision saved, but FreeCAD did not acknowledge opening it. Use the artifact download.')

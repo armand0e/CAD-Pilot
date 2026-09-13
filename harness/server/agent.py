@@ -44,7 +44,7 @@ from .native import read_native_state
 from .design import DESIGN_SCHEMA, DESIGN_SYSTEM, validate_design, geometry_signature
 from .projects import atomic_json
 from .presentation import present_revision
-from .edit_guard import note_input, native_edit_blocker, reconcile
+from .edit_guard import NativeEditBlocked, note_input, native_edit_blocker, reconcile
 from .research import ResearchTool, ResearchError, NOTES_SCHEMA, validate_notes
 from .operations import (OPERATION_SCHEMA, OPERATION_SYSTEM, REQUIREMENT_REVIEW_SCHEMA, REQUIREMENT_REVIEW_SYSTEM,
                          candidate, compile_workspace, describe_features, TOOL_DEFINITIONS, TOOL_DESCRIPTIONS, GEOMETRY_TOOLS, normalize_tool_arguments)
@@ -1437,8 +1437,11 @@ class AgentRunner:
                 raise ValueError('Operation budget for this session is used up; tell the user and stop.')
             blocker = await self._inference(native_edit_blocker(self.session))
             if blocker:
-                self.pause(True, blocker)
-                raise ValueError(blocker)
+                # A refused write is a tool error. Pi must be able to finish its
+                # batch, consume steering, inspect, and explain the conflict.
+                if self._pi_bridge is None:
+                    self.pause(True, blocker)
+                raise NativeEditBlocked(blocker)
             operation = {'tool': name, 'arguments': args}
             proposed, design, next_state = candidate(ctx['ledger'], operation)
             if design is None:
@@ -1466,8 +1469,10 @@ class AgentRunner:
                 await self._inference(prepare())
                 blocker = await self._inference(native_edit_blocker(self.session))
                 if blocker:
-                    self.pause(True, blocker)
-                    raise ValueError(blocker)
+                    ctx['tried_geometry'].discard((ctx['expected_head'], resolved))
+                    if self._pi_bridge is None:
+                        self.pause(True, blocker)
+                    raise NativeEditBlocked(blocker)
                 atomic_json(stage / 'workspace.json', proposed)
                 if self.research['sources']:
                     atomic_json(stage / 'research.json', self.research)
@@ -1500,10 +1505,11 @@ class AgentRunner:
             if isinstance(error, RuntimeError) and 'exceeded' not in str(error):
                 raise
             message = describe_features(str(error), ctx['state'].get('feature_operations', {}), ctx['ledger']['operations'])
-            try:
-                ctx['tried'].add((ctx['expected_head'], name, json.dumps(json.loads(call.get('arguments') or '{}'), sort_keys=True)))
-            except ValueError:
-                ctx['tried'].add((ctx['expected_head'], name, call.get('arguments') or ''))
+            if not isinstance(error, NativeEditBlocked):
+                try:
+                    ctx['tried'].add((ctx['expected_head'], name, json.dumps(json.loads(call.get('arguments') or '{}'), sort_keys=True)))
+                except ValueError:
+                    ctx['tried'].add((ctx['expected_head'], name, call.get('arguments') or ''))
             try:
                 project.record_attempt(json.dumps({'tool': name, 'arguments': call.get('arguments')}), message, self.step_number, 0, ctx['expected_head'])
             except OSError:

@@ -57,7 +57,8 @@ async def connect_runtime(app):
             saved = json.loads(credentials.read_text()) if credentials.exists() else {}
             token = saved.get('token') if use_saved and saved.get('instance') == identity and saved.get('origin') == origin else None
             token = token or os.environ.get('CADPILOT_PAIRING_TOKEN') or pairing.read_text().strip()
-            async with connect(url, additional_headers={'Authorization': 'Bearer ' + token, 'X-CADPilot-Instance': identity},
+            async with connect(url, additional_headers={'Authorization': 'Bearer ' + token, 'X-CADPilot-Instance': identity,
+                                                       'X-CADPilot-Relay-Version': '2'},
                                user_agent_header='CADPilot/1.0',
                                max_size=16 * 1024 * 1024, open_timeout=30, ping_interval=20, ping_timeout=40) as socket:
                 greeting = json.loads(await asyncio.wait_for(socket.recv(), 30))
@@ -74,7 +75,7 @@ async def connect_runtime(app):
                 log.info('CAD computer connected to its account')
                 delay = 1
                 use_saved = True
-                await serve_worker(app, socket)
+                await serve_worker(app, socket, fragment_ws=greeting.get('relay_version', 1) >= 2)
                 app.state.connector_status = {'state': 'disconnected', 'detail': 'Portal connection closed; reconnecting.'}
         except asyncio.CancelledError:
             raise

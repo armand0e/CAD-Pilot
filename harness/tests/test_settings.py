@@ -85,6 +85,22 @@ class UploadLimitTests(unittest.TestCase):
                 store.validate({'models': [{'name': 'test', 'model': 'test', 'base_url': 'http://localhost:8000/v1', 'thinking_token_budget': budget}]}, previous=None)
 
 class ContextWindowTests(unittest.TestCase):
+    def test_effort_changes_preserve_autodetection_but_clearing_an_explicit_limit_reprobes(self):
+        settings = store.validate({'models': [
+            {'name': 'local', 'model': 'local', 'base_url': 'http://localhost:8000/v1'}]}, previous=None)
+        config = {'planner': {}, 'agent': {}}
+        store.apply(config, settings)
+        config['planner']['max_model_len'] = 131072  # /models discovery
+        settings['reasoning_effort'] = 'off'
+        store.apply(config, settings)
+        self.assertEqual(config['planner']['max_model_len'], 131072)
+        settings['models'][0]['context_window'] = 65536
+        store.apply(config, settings)
+        self.assertEqual(config['planner']['max_model_len'], 65536)
+        settings['models'][0]['context_window'] = None
+        store.apply(config, settings)
+        self.assertNotIn('max_model_len', config['planner'])
+
     def test_image_capacity_is_per_provider_defaults_to_16_and_validates(self):
         models = [{'name': 'local', 'model': 'local', 'base_url': 'http://localhost:8000/v1', 'max_images_per_request': 3},
                   {'name': 'other', 'model': 'other', 'base_url': 'http://localhost:9000/v1'}]

@@ -133,14 +133,14 @@ def create_app(root=ROOT, origin=None, image=None):
             return await ws.close(code=4403)
         credential = result['credential'] or token
         await ws.accept()
-        link = PortalConnection(ws)
+        link = PortalConnection(ws, fragment_ws=ws.headers.get('x-cadpilot-relay-version') == '2')
         previous = connections.get(identity)
         if previous:
             previous.close()
             await previous.ws.close(code=1012)
         connections[identity] = link
         try:
-            await link.send({'type': 'paired', 'credential': result['credential']})
+            await link.send({'type': 'paired', 'credential': result['credential'], 'relay_version': 2})
             while True:
                 packet = await asyncio.wait_for(ws.receive_json(), 50)
                 if packet.get('type') == 'ack':
@@ -191,7 +191,9 @@ def create_app(root=ROOT, origin=None, image=None):
                 elif not started:
                     await JSONResponse({'detail': 'CAD computer disconnected', 'onboarding': True}, 503)(scope, receive, send)
                 else:
-                    await send({'type': 'http.response.body', 'body': b'', 'more_body': False})
+                    # Headers may already promise a Content-Length. An empty
+                    # successful ending would disguise a truncated download.
+                    raise
 
     # A final ASGI route preserves streaming HTTP uploads/downloads and WS bytes.
     from starlette.routing import Mount

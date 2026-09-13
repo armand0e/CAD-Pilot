@@ -132,6 +132,7 @@ class PiBridge:
         self.pending = {}
         self.tools = {}
         self.write_lock = asyncio.Lock()
+        self.model_lock = asyncio.Lock()
         self.activity = asyncio.Event()
         self.idle = True
         self.error = None
@@ -163,6 +164,18 @@ class PiBridge:
             return await future
         finally:
             self.pending.pop(key, None)
+
+    async def sync_model(self):
+        async with self.model_lock:
+            current = model_config(self.runner)
+            if current != self.model:
+                try:
+                    await self.request('configure', model=current)
+                except (OSError, RuntimeError) as error:
+                    self.error = RuntimeError('Pi could not apply the model settings: ' + str(error))
+                    self.runner._wake.set()
+                    raise self.error from error
+                self.model = current
 
     async def start(self):
         node = os.environ.get('CADPILOT_NODE') or shutil.which('node')
@@ -384,6 +397,9 @@ class PiBridge:
         except Exception as error:
             content, failed = [{'type': 'text', 'text': str(error)}], True
         try:
+            # Pi snapshots the next model configuration after this tool batch.
+            # Apply live context/effort changes before returning its last result.
+            await self.sync_model()
             await self.send({'type': 'tool_result', 'id': message['id'], 'content': content, 'isError': failed})
         except (OSError, RuntimeError):
             pass
@@ -432,6 +448,7 @@ async def run_pi(runner, intent, *, persistent=False):
             runner._wake.clear()
             if bridge.error:
                 raise bridge.error
+            await runner._interruptible(bridge.sync_model())
             active_tools = [t['function']['name'] for t in runner._tool_definitions()]
             if active_tools != bridge.active_tools:
                 await runner._interruptible(bridge.request('tools', active=active_tools))
@@ -442,10 +459,6 @@ async def run_pi(runner, intent, *, persistent=False):
                     item.setdefault('turn_id', runner.turn_id)
                     if item['id'] in bridge.sent:
                         continue
-                    current_model = model_config(runner)
-                    if current_model != bridge.model:
-                        await runner._interruptible(bridge.request('configure', model=current_model))
-                        bridge.model = current_model
                     text, images = item['content'], []
                     for name in item.get('attachments', []):
                         images.append(pi_image(image_path(project.path, name), id=name, kind='reference'))

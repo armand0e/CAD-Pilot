@@ -77,7 +77,7 @@ def _cad_inventory():
         entries.append(dict(_cad_content.entry(doc), name=doc.Name,
                             object_count=len(doc.Objects), filename=doc.FileName,
                             editing=editing.Object.Name if editing else None))
-    return {'content_observer': _cad_content.identity, 'documents': entries,
+    return {'timestamp': _cad_time.time(), 'content_observer': _cad_content.identity, 'documents': entries,
             'documents_truncated': len(documents) > 64}
 
 

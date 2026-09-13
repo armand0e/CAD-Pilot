@@ -51,7 +51,7 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return client
 
-    async def pair(self, client, marker):
+    async def pair(self, client, marker, *, relay_version=2):
         response = await client.post('/api/onboarding/bundle')
         self.assertEqual(response.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
@@ -75,7 +75,7 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
             return {'owner': marker}
         @cad.get('/api/projects/test/binary')
         async def binary():
-            return Response(b'\xff\x00\x80a' * 2000000, media_type='application/octet-stream')
+            return Response(b'\xff\x00\x80a' * 5000000, media_type='application/octet-stream')
         @cad.post('/api/sessions/test/attachments')
         async def upload(request: Request):
             body = await request.body()
@@ -86,15 +86,26 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
             await ws.send_bytes(b'\xff\x00viewport')
             await ws.send_text(await ws.receive_text())
             await ws.close()
+        @cad.websocket('/ws/agent/large')
+        async def activity(ws: WebSocket):
+            await ws.accept()
+            # Exceeds the production relay's 16 MiB message limit even before
+            # encoding. It must still arrive as one browser-visible JSON value.
+            await ws.send_json({'transcript': 'CAD 🛠\n' * 2000000})
+            await ws.send_text(await ws.receive_text())
+            await ws.send_bytes(b'\xff\x00\x80a' * 5000000)
+            await ws.send_json({'t': 'done'})
+            await ws.close()
         ready = asyncio.Event()
         async def worker():
             async with connect(f'ws://127.0.0.1:{self.port}/api/worker/connect', additional_headers={
-                    'Authorization': 'Bearer ' + token, 'X-CADPilot-Instance': identity}, max_size=16*1024*1024) as ws:
+                    'Authorization': 'Bearer ' + token, 'X-CADPilot-Instance': identity,
+                    'X-CADPilot-Relay-Version': str(relay_version)}, max_size=16*1024*1024) as ws:
                 message = json.loads(await ws.recv())
                 self.credential = message['credential']
                 await ws.send(json.dumps({'type': 'ack', 'credential': self.credential}))
                 ready.set()
-                await serve_worker(cad, ws)
+                await serve_worker(cad, ws, fragment_ws=relay_version >= 2)
         task = asyncio.create_task(worker())
         self.workers.append(task)
         await asyncio.wait_for(ready.wait(), 5)
@@ -118,7 +129,8 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
         self.assertEqual(uploaded.json(), {'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()})
         downloaded = await alice.get('/api/projects/test/binary')
-        self.assertEqual(len(downloaded.content), 8000000)
+        self.assertEqual(downloaded.content, b'\xff\x00\x80a' * 5000000)
+        self.assertEqual(downloaded.headers['content-length'], '20000000')
         cookie = '; '.join(f'{key}={value}' for key, value in alice.cookies.items())
         async with connect(f'ws://127.0.0.1:{self.port}/ws/view/test', additional_headers={'Cookie': cookie}) as ws:
             self.assertEqual(await ws.recv(), b'\xff\x00viewport')
@@ -127,6 +139,32 @@ class PortalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await alice.delete('/api/onboarding/instance/' + alice_id)).status_code, 200)
         self.assertEqual((await alice.get('/api/projects')).status_code, 503)
         self.assertEqual((await bob.get('/api/projects')).status_code, 200)
+
+    async def test_large_chat_snapshot_and_ws_messages_keep_boundaries_and_connection(self):
+        client = await self.account('long-chat')
+        await self.pair(client, 'long-chat')
+        self.assertEqual((await client.post('/api/onboarding/complete')).status_code, 200)
+        cookie = '; '.join(f'{key}={value}' for key, value in client.cookies.items())
+        async with connect(f'ws://127.0.0.1:{self.port}/ws/agent/large', additional_headers={'Cookie': cookie},
+                           max_size=64*1024*1024) as ws:
+            snapshot = json.loads(await asyncio.wait_for(ws.recv(), 20))
+            self.assertEqual(snapshot, {'transcript': 'CAD 🛠\n' * 2000000})
+            steering = json.dumps({'t': 'intent', 'text': 'opening 🛠\n' * 100000})
+            await ws.send(steering)
+            self.assertEqual(await asyncio.wait_for(ws.recv(), 20), steering)
+            self.assertEqual(await asyncio.wait_for(ws.recv(), 20), b'\xff\x00\x80a' * 5000000)
+            self.assertEqual(json.loads(await ws.recv()), {'t': 'done'})
+        self.assertEqual((await client.get('/api/projects')).json(), {'owner': 'long-chat'})
+
+    async def test_portal_does_not_fragment_messages_to_an_older_worker(self):
+        client = await self.account('older-worker')
+        await self.pair(client, 'older-worker', relay_version=1)
+        self.assertEqual((await client.post('/api/onboarding/complete')).status_code, 200)
+        cookie = '; '.join(f'{key}={value}' for key, value in client.cookies.items())
+        async with connect(f'ws://127.0.0.1:{self.port}/ws/view/test', additional_headers={'Cookie': cookie}) as ws:
+            self.assertEqual(await ws.recv(), b'\xff\x00viewport')
+            await ws.send('long steering message ' * 3000)
+            self.assertEqual(await ws.recv(), 'long steering message ' * 3000)
 
     async def test_public_host_secure_login_and_expired_pairing(self):
         client = await self.account('carol')

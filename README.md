@@ -32,6 +32,8 @@ these are sent in `chat_template_kwargs.reasoning_effort`, while Off sends
 `enable_thinking: false`. An empty thinking budget adds no explicit token budget.
 Pi fits output into the remaining context; CADPilot does not impose an 8k output cap.
 Leave the context window empty to detect changes when your model server restarts.
+Context and reasoning changes apply to the next model request, including during
+a tool-driven turn. An unrelated settings change keeps the detected context size.
 Runtime fixes require updating the paired container, as well as the public portal.
 
 **Images per request** is configurable for each provider in Settings (default 16,
@@ -42,6 +44,13 @@ images, revision records, tool results and Pi's saved conversation remain intact
 `view_image` can reopen saved CAD views by IDs such as `cad:r0001:top`, including
 after compaction. Oversized reference collections show a notice and remain
 available for the assistant to inspect in batches. Pi still owns compaction.
+
+FreeCAD edit checks use timestamped document observations so an older viewport
+snapshot cannot undo the acknowledgment of a saved revision. A refused CAD write
+returns a tool error to Pi; inspection and conversation remain available. Real
+document edits still require an explicit choice about the saved recipe. The portal
+relay chunks large downloads and reassembles large chat/viewport messages without
+splitting the messages seen by the browser.
 
 ## Run your own portal
 

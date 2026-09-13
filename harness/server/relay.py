@@ -37,13 +37,65 @@ def decode(event):
     return result
 
 
+def event_packets(identity, event, *, fragment_ws=True):
+    """Chunk HTTP bodies and fragment whole WS messages inside the relay.
+
+    ASGI permits multiple HTTP body events, but a WS message must arrive at its
+    consumer intact (e.g. a JSON transcript). `more` is relay metadata only.
+    Ordinary events keep the original wire format for existing workers.
+    """
+    if event['type'] in ('http.request', 'http.response.body') and event.get('body'):
+        body = event['body']
+        for offset in range(0, len(body), CHUNK):
+            yield {'type': 'event', 'id': identity, 'event': encode(event | {
+                'body': body[offset:offset + CHUNK],
+                'more_body': offset + CHUNK < len(body) or event.get('more_body', False)})}
+        return
+    if fragment_ws and event['type'] in ('websocket.send', 'websocket.receive'):
+        key = 'text' if event.get('text') is not None else 'bytes'
+        value = event.get(key)
+        # A Unicode character may occupy twelve bytes after JSON escaping.
+        size = CHUNK // 12 if key == 'text' else CHUNK
+        if value and len(value) > size:
+            for offset in range(0, len(value), size):
+                yield {'type': 'event', 'id': identity, 'event': encode(event | {key: value[offset:offset + size]}),
+                       'more': offset + size < len(value)}
+            return
+    yield {'type': 'event', 'id': identity, 'event': encode(event)}
+
+
+class EventDecoder:
+    """Per-channel assembly; cancellation drops only that channel's fragments."""
+    def __init__(self):
+        self.parts = []
+        self.kind = None
+
+    def receive(self, packet):
+        event = decode(packet['event'])
+        if not self.parts and not packet.get('more'):
+            return event
+        key = 'text' if event.get('text') is not None else 'bytes'
+        kind = (event['type'], key)
+        if event['type'] not in ('websocket.send', 'websocket.receive') or (self.kind and kind != self.kind):
+            raise ValueError('Invalid fragmented WebSocket event')
+        self.kind = kind
+        self.parts.append(event[key])
+        if packet.get('more'):
+            return None
+        event[key] = ('' if key == 'text' else b'').join(self.parts)
+        self.parts.clear()
+        self.kind = None
+        return event
+
+
 class Disconnected(Exception):
     pass
 
 
 class PortalConnection:
-    def __init__(self, websocket):
+    def __init__(self, websocket, *, fragment_ws=False):
         self.ws = websocket
+        self.fragment_ws = fragment_ws
         self.channels = {}
         self.closed = False
         self.lock = asyncio.Lock()
@@ -77,16 +129,12 @@ class PortalConnection:
         async def incoming():
             while True:
                 event = await receive()
-                body = event.get('body', b'')
-                if body:
-                    for offset in range(0, len(body), CHUNK):
-                        piece = event | {'body': body[offset:offset + CHUNK], 'more_body': offset + CHUNK < len(body) or event.get('more_body', False)}
-                        await self.send({'type': 'event', 'id': identity, 'event': encode(piece)})
-                else:
-                    await self.send({'type': 'event', 'id': identity, 'event': encode(event)})
+                for packet in event_packets(identity, event, fragment_ws=self.fragment_ws):
+                    await self.send(packet)
                 if event['type'] in ('http.disconnect', 'websocket.disconnect'):
                     return
         reader = None
+        decoder = EventDecoder()
         try:
             await self.send({'type': 'open', 'id': identity, 'scope': encode(forwarded)})
             reader = asyncio.create_task(incoming())
@@ -96,7 +144,9 @@ class PortalConnection:
                     raise Disconnected('CAD computer disconnected')
                 if packet['type'] == 'end':
                     return
-                event = decode(packet['event'])
+                event = decoder.receive(packet)
+                if event is None:
+                    continue
                 await send(event)
                 if event['type'] == 'websocket.close' or (event['type'] == 'http.response.body' and not event.get('more_body')):
                     return
@@ -109,7 +159,7 @@ class PortalConnection:
                 await self.send({'type': 'cancel', 'id': identity})
 
 
-async def serve_worker(app, websocket):
+async def serve_worker(app, websocket, *, fragment_ws=True):
     channels, tasks = {}, {}
     lock = asyncio.Lock()
 
@@ -119,14 +169,21 @@ async def serve_worker(app, websocket):
 
     async def run(identity, scope, queue):
         started = False
+        decoder = EventDecoder()
+        async def incoming():
+            while True:
+                event = decoder.receive(await queue.get())
+                if event is not None:
+                    return event
         async def output(event):
             nonlocal started
             started = True
-            await send({'type': 'event', 'id': identity, 'event': encode(event)})
+            for packet in event_packets(identity, event, fragment_ws=fragment_ws):
+                await send(packet)
         try:
             scope.update(asgi={'version': '3.0'}, http_version='1.1', scheme='http' if scope['type'] == 'http' else 'ws',
                          server=('localhost', 7800), client=('127.0.0.1', 0), root_path='')
-            await app(scope, queue.get, output)
+            await app(scope, incoming, output)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -158,7 +215,7 @@ async def serve_worker(app, websocket):
                 queue = channels[identity] = asyncio.Queue(maxsize=64)
                 tasks[identity] = asyncio.create_task(run(identity, scope, queue))
             elif packet['type'] == 'event' and identity in channels:
-                await channels[identity].put(decode(packet['event']))
+                await channels[identity].put(packet)
             elif packet['type'] == 'cancel' and identity in tasks:
                 tasks[identity].cancel()
     finally:

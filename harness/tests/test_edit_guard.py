@@ -73,6 +73,32 @@ class GuardTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await native_edit_blocker(s))
         self.assertFalse(reconcile(s, state(document(epoch=5))))
 
+    async def test_open_receipt_cannot_be_rolled_back_by_the_previous_observer_frame(self):
+        s = self.session()
+        old = state(document('previous'))
+        receipt = state(document('previous'), document('opened'))
+        await acknowledge_saved(s, inventory(receipt))
+        baseline = copy.deepcopy(s.content_baseline)
+        self.assertFalse(reconcile(s, old))  # Includes status polling during presentation.
+        self.assertEqual(s.content_baseline, baseline)
+        fresh = state(document('previous'), document('opened'))
+        with patch('server.edit_guard.read_native_state', side_effect=[old, fresh]):
+            self.assertIsNone(await native_edit_blocker(s))
+        self.assertFalse(reconcile(s, state(document('previous', epoch=2), document('opened'))))
+
+    def test_old_observations_cannot_restore_a_closed_document_or_erase_newer_edits(self):
+        s = self.session()
+        original = state(document())
+        s.content_baseline = inventory(original)
+        self.assertTrue(reconcile(s, state()))  # Closing an unchanged document is allowed.
+        self.assertFalse(reconcile(s, original))
+        self.assertEqual(s.content_baseline['documents'], {})
+        self.assertFalse(reconcile(s, state(document(epoch=2))))
+
+    def test_inventory_requires_a_finite_timestamp_including_open_receipts(self):
+        for timestamp in (None, 0, True, float('nan'), float('inf')):
+            self.assertIsNone(inventory(dict(state(document()), timestamp=timestamp)))
+
     async def test_agent_edits_are_not_blame_assigned_to_user(self):
         s = self.session(); s.agent_changes = True
         with patch('server.edit_guard.read_native_state', return_value=state(document())):

@@ -206,6 +206,26 @@ class OperationAgentTests(unittest.IsolatedAsyncioTestCase):
     def tool_results(self, index):
         return [json.loads(m['content']) for m in self.calls[index][0] if m['role'] == 'tool']
 
+    async def test_edit_guard_after_build_discards_stage_without_blacklisting_valid_geometry(self):
+        chat = self.turns(('', [('create_body', plate()['arguments'])]),
+                          ('The document observation is now current.', [('create_body', plate()['arguments'])]),
+                          ('Plate saved.', []))
+        stages = []
+        async def prepare(design):
+            stage = stage_fixture(self.project, design)
+            stages.append(stage)
+            return stage
+        with pi_model(self.runner, chat), patch.object(self.project, 'prepare', prepare), \
+                patch('server.agent.present_revision', return_value=None), \
+                patch('server.agent.native_edit_blocker', side_effect=[None, 'Observation unavailable', None, None]):
+            self.assertTrue(await self.runner._native_model('Make the plate'))
+        self.assertEqual(len(stages), 2)
+        self.assertTrue(all(not stage.exists() for stage in stages))
+        self.assertEqual(self.project.read()['head'], 'r0001')
+        self.assertIn('Observation unavailable', self.tool_results(1)[-1]['error'])
+        self.assertTrue(self.tool_results(2)[-1]['ok'])
+        self.assertFalse(self.runner.paused)
+
     async def test_pi_question_tool_delivers_the_user_answer(self):
         chat = self.turns(('', [('ask', {'question': 'Which connector variant?'})]),
                           ('Building the plate.', [('create_body', plate()['arguments'])]), ('Plate saved.', []))

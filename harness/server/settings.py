@@ -105,12 +105,15 @@ def apply(config, settings):
     """Mutate the live config in place: the active model serves the assistant; web search default."""
     active = next(m for m in settings['models'] if m['name'] == settings['active_model'])
     planner = config.setdefault('planner', {})
-    if planner.get('base_url') != active['base_url'] or planner.get('model') != active['model']:
+    changed_provider = planner.get('base_url') != active['base_url'] or planner.get('model') != active['model']
+    if changed_provider:
         planner.pop('structured_output_whitespace_pattern', None)
         planner.pop('vendor_extensions', None)
     planner.update(base_url=active['base_url'], model=active['model'], api_key=active['api_key'], reasoning_effort=settings['reasoning_effort'])
     planner['max_images_per_request'] = active.get('max_images_per_request') or 16
-    planner.pop('max_model_len', None)
+    if changed_provider or planner.get('context_window_explicit'):
+        planner.pop('max_model_len', None)
+    planner['context_window_explicit'] = bool(active.get('context_window'))
     if active.get('context_window'):
         planner['max_model_len'] = active['context_window']
     agent = config.setdefault('agent', {})

@@ -95,7 +95,12 @@ async def _endpoint_health() -> dict:
                                         if m['name'] == SETTINGS['active_model']), None)
                                    if name == 'planner' else CONFIG[name].get('max_model_len'))
                 if served and not explicit_window and type(served.get('max_model_len')) is int and served['max_model_len'] > 0:
+                    changed = CONFIG[name].get('max_model_len') != served['max_model_len']
                     CONFIG[name]["max_model_len"] = served["max_model_len"]
+                    if changed and name == 'planner':
+                        for session in manager.sessions.values():
+                            if session.agent:
+                                session.agent._wake.set()
             except Exception:  # noqa: BLE001
                 _endpoint_cache[name] = False
     _endpoint_cache["ts"] = _time.time()
@@ -139,9 +144,11 @@ async def put_settings(body: dict):
     SETTINGS = candidate
     settings_store.apply(CONFIG, SETTINGS)
     _endpoint_cache['ts'] = 0.0
+    await _endpoint_health()
     for session in manager.sessions.values():
         runner = getattr(session, 'agent', None)
         if runner:
+            runner._wake.set()
             runner.research_tool.config['enabled'] = SETTINGS['web_search']
             if not SETTINGS['web_search']:
                 runner.set_web_enabled(False)
@@ -437,6 +444,7 @@ async def agent_socket(socket: WebSocket, session_id: str) -> None:
                         raise ValueError("The CAD application has closed. Start a new session to continue.")
                     if type(message.get("new_task", False)) is not bool:
                         raise ValueError("new_task must be a boolean")
+                    await _endpoint_health()
                     runner.start(message.get("task", ""), message.get("mode", "auto"), new_task=message.get("new_task", False),
                                  attachments=message.get("attachments") or [])
                 elif kind == "intent":
