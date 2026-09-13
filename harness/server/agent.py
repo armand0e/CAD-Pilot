@@ -486,8 +486,6 @@ class AgentRunner:
         self._save_conversation()
         if not self._native_project():
             self._intents.put_nowait(task_text)
-        if continuing:
-            self.emit({"t": "assistant", "presentation": "status", "message": "Continuing from the current document with your latest guidance."})
         self._task = asyncio.create_task(self._run())
 
     def submit_intent(self, text: str, attachments=None) -> None:
@@ -515,7 +513,7 @@ class AgentRunner:
         self._guidance_version += 1
         if not self._native_project():
             self._guidance_changed.set()
-        self.emit({"t": "guidance", "message": "Got it—updating the plan from the current CAD state."})
+        self.emit({"t": "guidance", "timeline": False})
         if self.paused:
             self.pause(False)
         self._wake.set()

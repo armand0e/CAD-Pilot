@@ -64,10 +64,14 @@ function settleTurn(turn, event, status) {
 
 /** Idempotent append/update reducer. Cancelled operations never accept late success. */
 export function reduceChat(state, event) {
+  // Steering acknowledgments are control events, not model thought or replies.
+  // Also hide the canned resume acknowledgment in transcripts from older workers.
+  if(event.t==='guidance' || (event.t==='assistant' && event.presentation==='status' &&
+      event.message==='Continuing from the current document with your latest guidance.'))return false;
   if(!['user','control','phase','thinking_start','thinking_delta','thinking_done','thinking_truncated','tool_input_start','tool_input_delta','tool_input_done','tool_settled','research_start','research_result',
     'research_error','research_cancelled','research_notes','intent','action','native_attempt','step_done','step_review',
     'tool_error','step_error','step_blocked','step_superseded','answer_start','answer_delta','answer_done','assistant',
-    'pause','guidance','note','recovery','native_review','task_review','done','error','question','answer'].includes(event.t))return false;
+    'pause','note','recovery','native_review','task_review','done','error','question','answer'].includes(event.t))return false;
   const eventKey = event.event_id || (event.id ? `legacy:${event.id}` : null);
   if (eventKey && state.seen.has(eventKey)) return false;
   if (eventKey) state.seen.add(eventKey);
@@ -203,7 +207,7 @@ export function reduceChat(state, event) {
       if(event.t === 'pause') { finishThinking(turn,event.ts); turn.status='paused'; }
       break;
     }
-    case 'guidance': case 'note': case 'recovery': case 'native_review': case 'task_review': {
+    case 'note': case 'recovery': case 'native_review': case 'task_review': {
       const text=event.message || event.summary || event.observation; if(!text) break;
       const op=operation(turn,`status:${id}`,'thinking',event);
       Object.assign(op,{label:event.t.includes('review') ? 'Reviewing the result' : 'Status update',text,status:'completed',finishedAt:event.ts}); break;
