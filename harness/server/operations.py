@@ -75,7 +75,7 @@ SPECS = {
     'finish': {'message': {'type': 'string', 'minLength': 1, 'maxLength': 1500}},
     'ask': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 1000}},
     'ask_question': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
-                     'options': {'type': 'array', 'minItems': 2, 'maxItems': 6, 'items': obj({
+                     'options': {'type': 'array', 'minItems': 0, 'maxItems': 6, 'items': obj({
                          'label': {'type': 'string', 'minLength': 1, 'maxLength': 80},
                          'description': {'type': 'string', 'maxLength': 200}})},
                      'multi_select': {'type': 'boolean'}},
@@ -1052,7 +1052,7 @@ TOOL_DESCRIPTIONS = {
     'import_reference': 'Download a public STEP/STL URL (or name an uploaded file) into the project as a reference model.',
     'recall_facts': 'Measurements you extracted from pages in earlier work, with their sources.',
     'design_notes': 'General design rules by topic: fdm enclosures, fasteners and fans, mechanical design.',
-    'ask_question': 'Ask the user one question with 2-6 options (they can also type). The answer comes back as the tool result; use it for choices you would otherwise guess.',
+    'ask_question': 'Ask one question with optional suggested choices (0-6 options). Every question has its own text answer option. The answer comes back as the tool result; use it for choices you would otherwise guess.',
     'ask': 'Ask the user a free-text question; the answer comes back as the tool result.',
     'review': 'Request an independent advisory review of the saved model against the request and brief; returns status and issues.',
 }

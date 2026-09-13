@@ -300,16 +300,20 @@ export class StreamingAnswer {
     this.buffer+=held;
   }
 }
-/** Inline question with suggested answers. Never blocks the turn: the agent waits for
- * a click or a typed reply. "Something else" focuses the composer. */
+/** Question answers belong to the question card, independently of chat drafts. */
 export class QuestionCard {
-  constructor(segment,onAnswer,onOther) {
-    this.onAnswer=onAnswer;this.onOther=onOther;this.selected=new Set();
+  constructor(segment,onAnswer) {
+    this.onAnswer=onAnswer;this.selected=new Set();this.otherSelected=!(segment.options||[]).length;
     this.el=element('div','question-card msg assistant');this.el.setAttribute('role','group');
     this.text=element('div','question-text');this.list=element('div','question-options');
+    this.response=element('textarea','question-response');this.response.rows=3;this.response.maxLength=8000;
+    this.response.placeholder='Type your answer';this.response.setAttribute('aria-label','Your answer');
+    this.response.oninput=()=>this.updateSubmit();
+    this.response.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();this.submit?.click();}};
     this.actions=element('div','question-actions');this.answerLine=element('div','question-answer');this.answerLine.hidden=true;
-    this.el.append(this.text,this.list,this.actions,this.answerLine);this.update(segment);
+    this.el.append(this.text,this.list,this.response,this.actions,this.answerLine);this.update(segment);
   }
+  updateSubmit(){if(this.submit)this.submit.disabled=!(this.selected.size || (this.otherSelected&&this.response.value.trim()));}
   update(segment) {
     const signature=JSON.stringify([segment.question,segment.options,segment.multiSelect,segment.status,segment.answer]);
     if(signature===this.signature)return;this.signature=signature;this.segment=segment;
@@ -331,9 +335,17 @@ export class QuestionCard {
       };
       this.list.append(button);
     }
+    const other=element('button','question-option question-other');other.type='button';other.disabled=!open;
+    other.setAttribute('role',segment.multiSelect?'checkbox':'radio');
+    const otherChosen=open?this.otherSelected:!!segment.answer?.text;
+    other.setAttribute('aria-checked',String(otherChosen));other.classList.toggle('chosen',otherChosen);
+    other.append(element('span','question-option-label',(segment.options||[]).length?'Type something else':'Type your answer'));
+    other.onclick=()=>{this.otherSelected=segment.multiSelect?!this.otherSelected:true;if(!segment.multiSelect)this.selected.clear();this.signature=null;this.update(segment);if(this.otherSelected)this.response.focus();};
+    this.list.append(other);
+    this.response.hidden=!open||!this.otherSelected;this.response.disabled=!open;
+    this.submit=null;
     if(open) {
-      if(segment.multiSelect){const submit=element('button','btn accent question-submit','Use selected');submit.type='button';submit.disabled=!this.selected.size;submit.onclick=()=>this.onAnswer(segment.questionId,[...this.selected],'');this.actions.append(submit);}
-      const other=element('button','question-other',(segment.options||[]).length?'Something else… (type below)':'Type your answer below');other.type='button';other.onclick=()=>this.onOther(segment.questionId);this.actions.append(other);
+      if(segment.multiSelect||this.otherSelected){this.submit=element('button','btn accent question-submit','Send answer');this.submit.type='button';this.submit.onclick=()=>this.onAnswer(segment.questionId,[...this.selected],this.otherSelected?this.response.value.trim():'');this.actions.append(this.submit);this.updateSubmit();}
       this.el.dataset.state='open';
     } else {
       this.el.dataset.state=segment.status;
@@ -361,7 +373,7 @@ export class AssistantTurn {
     for(const segment of turn.segments) {
       if(segment.kind==='question'){
         renderGroup();let card=this.components.get(segment.id);
-        if(!card){card=new QuestionCard(segment,(id,selected,text)=>window.cadpilotAnswer?.(id,selected,text),id=>window.cadpilotAnswerOther?.(id));this.components.set(segment.id,card);this.content.append(card.el);}
+        if(!card){card=new QuestionCard(segment,(id,selected,text)=>window.cadpilotAnswer?.(id,selected,text));this.components.set(segment.id,card);this.content.append(card.el);}
         card.update(segment);continue;
       }
       if(segment.kind!=='answer'){group.push(segment);continue;}

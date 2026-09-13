@@ -552,7 +552,6 @@ function handleAgentEvent(msg) {
     state.canContinue = msg.can_continue ?? !!msg.task;
     state.agentConnected = true; state.pending = false;
     state.question = msg.pending_question || null;
-    if (state.question) input.placeholder = "Choose an option above, or type your answer here";
     $('web-search-toggle').disabled = msg.chat_protocol !== 1;
     if (msg.context_usage) { state.contextUsage = msg.context_usage; renderContextUsage(msg.context_usage); }
     renderImageContext(msg.image_context);
@@ -582,8 +581,8 @@ function updateAgentControls(msg) {
     case "pause": state.paused = msg.paused; updatePhase(msg.paused ? "paused" : "planning"); break;
     case "context_usage": state.contextUsage = msg; renderContextUsage(msg); break;
     case "image_context": renderImageContext(msg); break;
-    case "question": state.question = msg; state.pending = false; updatePhase("awaiting_answer"); input.placeholder = "Choose an option above, or type your answer here"; if (!state.replaying) input.focus(); break;
-    case "answer": if (state.question?.question_id === msg.question_id) { state.question = null; input.placeholder = "What would you like to make?"; } state.pending = false; updatePhase("planning"); break;
+    case "question": state.question = msg; state.pending = false; updatePhase("awaiting_answer"); break;
+    case "answer": if (state.question?.question_id === msg.question_id) state.question = null; state.pending = false; updatePhase("planning"); break;
     case "phase": state.completed = msg.completed_steps; state.phase = msg.phase; if (msg.phase !== "idle") updatePhase(msg.phase); break;
     case "control":
       state.running = msg.locked; state.pending = false;
@@ -646,9 +645,7 @@ function send() {
   // report provider errors; an unused action endpoint must never block chat.
   let sent;
   const attachments = (state.attachments || []).filter(a => a.kind === 'image').map(a => a.id);
-  if (state.running && state.question) {
-    sent = state.agentWS.send({ t: "answer", question_id: state.question.question_id, selected: [], text });
-  } else if (!state.running) {
+  if (!state.running) {
     sent = state.agentWS.send({ t: "start", task: text, mode: state.mode, new_task: state.freshTask, attachments });
   } else sent = state.agentWS.send({ t: "intent", text, attachments });
   if (sent) { state.attachments = []; renderAttachments(); }
@@ -789,7 +786,6 @@ window.cadpilotAnswer = (questionId, selected, text) => {
   if (!state.agentWS?.send({ t: "answer", question_id: questionId, selected, text })) { toast("Connection interrupted. Please answer again.", "err"); return; }
   state.pending = true; syncControls();
 };
-window.cadpilotAnswerOther = () => { input.placeholder = "Type your answer"; $("composer-hint").textContent = "Your typed reply answers the question above"; input.focus(); };
 $("btn-new-task").onclick = () => { state.freshTask = true; input.placeholder = "Describe a new goal. The CAD document stays open."; $("composer-hint").textContent = "New goal · Existing geometry is preserved"; input.focus(); };
 $("btn-send").onclick = () => { if ($("btn-send").dataset.mode === "stop") state.agentWS?.send({ t: "stop" }); else send(); };
 input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });

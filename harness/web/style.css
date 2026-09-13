@@ -289,7 +289,8 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .question-option-label { font-weight: 600; font-size: 13px; }
 .question-option-description { font-size: 12px; color: var(--text2); }
 .question-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.question-other { font-size: 12px; color: var(--text2); text-decoration: underline; padding: 4px 0; }
+.question-response { box-sizing: border-box; width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--hairline2); border-radius: var(--r-sm); color: var(--text); background: var(--surface-inset); font: inherit; }
+.question-response:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .question-submit { padding: 6px 12px; border-radius: var(--r-sm); font-size: 12px; }
 .question-answer { font-size: 12px; color: var(--text2); border-top: 1px solid var(--hairline); padding-top: 8px; }
 

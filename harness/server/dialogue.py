@@ -60,7 +60,13 @@ class Dialogue:
             return
         message = {'id': event.get('event_id') or f'legacy-{len(self.messages)}',
                    'turn_id': turn, 'role': role, 'kind': kind, 'content': text[:8000]}
-        if role == 'user' and self.messages and self.messages[-1]['kind'] == 'question':
+        if event.get('question_id'):
+            message['question_id'] = event['question_id']
+        if event.get('t') == 'answer' and event.get('question_id'):
+            question = next((m for m in reversed(self.messages) if m['kind'] == 'question' and m.get('question_id') == event['question_id']), None)
+            if question:
+                message['reply_to'] = question['id']
+        elif role == 'user' and self.messages and self.messages[-1]['kind'] == 'question' and not self.messages[-1].get('question_id'):
             message['reply_to'] = self.messages[-1]['id']
         self.messages.append(message)
 
@@ -87,4 +93,4 @@ class Dialogue:
             return
         for m in messages[-96:]:
             if isinstance(m, dict) and m.get('role') in ('user', 'assistant') and isinstance(m.get('content'), str) and isinstance(m.get('id'), str):
-                self.messages.append({k: m[k] for k in ('id', 'turn_id', 'role', 'kind', 'content', 'reply_to') if k in m} | {'kind': m.get('kind', 'message')})
+                self.messages.append({k: m[k] for k in ('id', 'turn_id', 'role', 'kind', 'content', 'reply_to', 'question_id') if k in m} | {'kind': m.get('kind', 'message')})

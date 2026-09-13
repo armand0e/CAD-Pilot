@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import tempfile
 import time
+from urllib.parse import urlsplit
 
 from PIL import Image
 from playwright.sync_api import sync_playwright, expect
@@ -22,9 +23,16 @@ def run(base):
     with sync_playwright() as p:
         browser=p.chromium.launch();page=browser.new_page(viewport={'width':1440,'height':960},color_scheme='light')
         page.on('pageerror',lambda e:errors.append(str(e)))
+        def static(route):
+            path=urlsplit(route.request.url).path
+            file=Path(__file__).resolve().parents[1]/'web'/('index.html' if path=='/' else path.removeprefix('/static/'))
+            if file.is_file():route.fulfill(path=str(file),headers={'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"})
+            else:route.fulfill(status=404,body='Not found')
+        page.route('**/*',static)
+        page.route('**/api/auth/session',lambda r:r.fulfill(json={'enabled':False}))
         def instrument(route):
-            response=route.fetch()
-            route.fulfill(response=response,body=response.text()+"\nwindow.__chatTest={event:handleAgentEvent,panel:chatPanel}; document.querySelector('.brand-tag').textContent='CONTROLLED FIXTURE';\n")
+            source=(Path(__file__).resolve().parents[1]/'web/app.js').read_text()
+            route.fulfill(content_type='text/javascript',body=source+"\nwindow.__chatTest={event:handleAgentEvent,panel:chatPanel}; document.querySelector('.brand-tag').textContent='CONTROLLED FIXTURE';\n")
         page.route('**/static/app.js',instrument)
         page.route('**/api/status',lambda r:r.fulfill(json={'missing_tools':[],'sessions':[session],
             'policy':{'ok':True},'planner':{'ok':True},'research':{'enabled':True}}))
@@ -328,11 +336,14 @@ def run(base):
         emit('thinking_done',turn_id='turn-thinking',operation_id='scroll-thinking',status='completed')
         # Inline question with suggested answers: the run keeps going, nothing pauses.
         emit('user',turn_id='turn-question',text='Controlled fixture: which board variant?')
+        page.locator('#composer-input').fill('Keep this chat draft')
+        placeholder=page.locator('#composer-input').get_attribute('placeholder')
         emit('question',turn_id='turn-question',question_id='q-fixture',question='Which Raspberry Pi variant is this case for?',
              options=[{'label':'Pi 3B','description':'Original 3B port layout'},{'label':'Pi 3B+','description':'PoE header, same outline'}],multi_select=False)
         card=page.locator('.question-card[data-state="open"]');expect(card).to_be_visible()
-        expect(card.locator('.question-option')).to_have_count(2)
-        assert page.locator('#composer-input').get_attribute('placeholder').startswith('Choose an option'),page.locator('#composer-input').get_attribute('placeholder')
+        expect(card.locator('.question-option')).to_have_count(3)
+        expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
+        assert page.locator('#composer-input').get_attribute('placeholder')==placeholder
         screenshot('08-question-open.png')
         card.locator('.question-option').nth(1).click()
         page.wait_for_timeout(60)
@@ -342,16 +353,32 @@ def run(base):
         expect(page.locator('.question-card .question-option').nth(1)).to_have_attribute('aria-checked','true')
         expect(page.locator('.question-card .question-option').first).to_be_disabled()
         screenshot('09-question-answered.png')
-        # A typed reply answers an open multi-select question instead of steering the run.
+        # Multi-select supports both choices and a local written answer.
         emit('question',turn_id='turn-question',question_id='q-multi',question='Which ports need openings?',
              options=[{'label':'USB','description':''},{'label':'HDMI','description':''},{'label':'Ethernet','description':''}],multi_select=True)
         multi=page.locator('.question-card[data-state="open"]')
         multi.locator('.question-option').nth(0).click();multi.locator('.question-option').nth(2).click()
         expect(multi.locator('.question-submit')).to_be_enabled()
-        page.fill('#composer-input','all of them plus the audio jack');page.locator('#btn-send').click();page.wait_for_timeout(60)
-        assert commands[-1]=={'t':'answer','question_id':'q-multi','selected':[],'text':'all of them plus the audio jack'},commands[-1]
-        emit('answer',turn_id='turn-question',question_id='q-multi',selected=[],text='all of them plus the audio jack',summary='all of them plus the audio jack')
+        expect(multi.locator('.question-option')).to_have_count(4)
+        multi.locator('.question-other').click();multi.locator('.question-response').fill('plus the audio jack')
+        multi.locator('.question-submit').click();page.wait_for_timeout(60)
+        assert commands[-1]=={'t':'answer','question_id':'q-multi','selected':['USB','Ethernet'],'text':'plus the audio jack'},commands[-1]
+        expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
+        emit('answer',turn_id='turn-question',question_id='q-multi',selected=['USB','Ethernet'],text='plus the audio jack',summary='USB, Ethernet; plus the audio jack')
         expect(page.locator('.question-card[data-state="completed"]')).to_have_count(2)
+        for qid,options in [('q-custom',[{'label':'Small'},{'label':'Large'}]),('q-short',[])]:
+            emit('question',turn_id='turn-question',question_id=qid,question='What size?',options=options,multi_select=False)
+            local=page.locator('.question-card[data-state="open"]')
+            expect(local.locator('.question-option')).to_have_count(len(options)+1)
+            local.locator('.question-other').click()
+            expect(local.locator('.question-submit')).to_be_disabled()
+            local.locator('.question-response').fill('42 mm')
+            emit('note',message='Unrelated update must preserve the answer draft')
+            expect(local.locator('.question-response')).to_have_value('42 mm')
+            local.locator('.question-response').press('Enter');page.wait_for_timeout(60)
+            assert commands[-1]=={'t':'answer','question_id':qid,'selected':[],'text':'42 mm'},commands[-1]
+            expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
+            emit('answer',turn_id='turn-question',question_id=qid,selected=[],text='42 mm',summary='42 mm')
         emit('done',turn_id='turn-question',reason='Fixture complete')
         emit('done',turn_id='turn-thinking',reason='Fixture complete');active=False
         page.reload(wait_until='networkidle');page.locator('.session-tab').first.click()
@@ -370,4 +397,4 @@ def run(base):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--base',default='http://127.0.0.1:7802');run(parser.parse_args().base)
+    parser=argparse.ArgumentParser();parser.add_argument('--base',default='https://chat-fixture.test/');run(parser.parse_args().base)

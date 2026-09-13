@@ -498,10 +498,6 @@ class AgentRunner:
         accepted = self._accept_attachments(attachments)
         if accepted:
             text = text + f" [{len(accepted)} image attachment(s)]"
-        if self._question:
-            # A typed reply while a question is open answers it; the turn continues.
-            self.answer_question(self._question['question_id'], [], text)
-            return
         self.turn_id = uuid.uuid4().hex
         self._clarification_reviewed = False
         self.emit({"t": "user", "text": text})
