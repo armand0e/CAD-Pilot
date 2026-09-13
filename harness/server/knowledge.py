@@ -20,6 +20,10 @@ def design_notes(topic):
     """The one or two note documents that best match the topic (plus their names)."""
     documents = []
     for path in sorted(KNOWLEDGE.glob('*.md')):
+        # Older images left this software guide in the knowledge volume. The
+        # current version is supplied as /work/CAD_GUIDE.md; don't serve stale copies.
+        if path.name == 'source-workspace.md':
+            continue
         text = path.read_text(errors='replace')
         title = text.splitlines()[0].lstrip('# ').strip() if text else path.stem
         score = len(_tokens(topic) & (_tokens(path.stem) | _tokens(title))) * 3 + len(_tokens(topic) & _tokens(text))

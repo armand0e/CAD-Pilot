@@ -193,11 +193,6 @@ class PiBridge:
             node = str(local)
         if not node or not (ROOT / 'pi/node_modules/@earendil-works/pi-coding-agent').is_dir():
             raise RuntimeError('Pi is not installed. Run ./harness/pi/setup.sh, or rebuild the CADPilot Docker image.')
-        self.proc = await asyncio.create_subprocess_exec(node, str(ROOT / 'pi/runtime.mjs'),
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            limit=16 * 1024 * 1024, env={**os.environ, 'PI_OFFLINE': '1', 'PI_SKIP_VERSION_CHECK': '1'})
-        self.reader = asyncio.create_task(self._read())
-        self.stderr = asyncio.create_task(self._drain_stderr())
         self.model = model_config(self.runner)
         research = getattr(self.runner, 'research_profile', False)
         if research:
@@ -215,6 +210,13 @@ class PiBridge:
         session_file = (self.runner.pi_session or {}).get('file')
         if session_file and not Path(session_file).resolve().is_relative_to((self.ctx['project'].path / 'pi/sessions').resolve()):
             session_file = None
+        # Prepare the workspace before starting Pi, so a local setup failure
+        # cannot leave a process waiting for an init message it will never get.
+        self.proc = await asyncio.create_subprocess_exec(node, str(ROOT / 'pi/runtime.mjs'),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            limit=16 * 1024 * 1024, env={**os.environ, 'PI_OFFLINE': '1', 'PI_SKIP_VERSION_CHECK': '1'})
+        self.reader = asyncio.create_task(self._read())
+        self.stderr = asyncio.create_task(self._drain_stderr())
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
             tools=definitions, activeTools=self.active_tools, workspace=not research,

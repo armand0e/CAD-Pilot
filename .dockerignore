@@ -7,6 +7,8 @@
 !harness/server/*.py
 !harness/server/*.FCMacro
 !harness/server/*.cfg
+!harness/server/guides/
+!harness/server/guides/*.md
 !harness/web/
 !harness/web/**
 !harness/knowledge/

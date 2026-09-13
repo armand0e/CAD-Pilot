@@ -174,7 +174,7 @@ deadline; cancellation kills the sandbox process group. Bash can specify its own
 
 FreeCAD source uses the full Python/Part APIs and exports named shapes through `parts`.
 `cad_paths.py` supports SVG path `d` data, not full SVG documents. Lines and quadratic/cubic
-Béziers remain native; elliptical arcs use cubic approximation. See [the workspace guide](knowledge/source-workspace.md).
+Béziers remain native; elliptical arcs use cubic approximation. See [the workspace guide](server/guides/source-workspace.md).
 OpenSCAD keeps its original source and generates a mesh; its FCStd/STEP exports are explicitly
 marked as faceted BREP. Contacting assembly meshes can be non-manifold, so `parts.zip`
 contains separately audited STL files. Geometry validity does not establish fit.

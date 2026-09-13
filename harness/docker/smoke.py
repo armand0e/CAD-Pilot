@@ -14,11 +14,31 @@ from server.projects import Project, atomic_json
 from server.research import ResearchTool
 from server.sessions import SessionManager
 from server.browser_research import local_page
+from server.source_workspace import SourceWorkspace
+
+
+async def check_source_workspace(root):
+    project = Project.create(root / 'projects', 'appimage-freecad')
+    work = SourceWorkspace(project)
+    work.ensure()
+    assert 'cad_build' in work.file('CAD_GUIDE.md').read_text()
+    await work.fs({'action': 'write', 'path': 'model.py', 'content':
+        'from cad_paths import extrude\nparts = {"Housing": extrude("M0 0 H40 Q44 0 44 4 V16 Q44 20 40 20 H0 Z", 6)}\n'})
+    stage = await work.prepare('model.py', None)
+    saved = project.commit(stage, None)
+    work.built(saved)
+    assert saved['geometry']['valid_solid']
+    assert saved['geometry']['solid_count'] == 1
+    assert all(abs(a - b) < .001 for a, b in zip(saved['geometry']['bounds_mm'], [44, 20, 6]))
+    for name in ('source.zip', 'model.FCStd', 'model.step', 'model.stl', 'view-iso.png'):
+        assert project.file(saved['head'], name).stat().st_size > 100
+    print('PASS: installed workspace guide, source Python, curved path, build and saved exports', flush=True)
 
 
 async def main():
     with tempfile.TemporaryDirectory(prefix='cadpilot-check-') as directory:
         root = Path(directory)
+        await check_source_workspace(root)
         project = Project.create(root / 'projects', 'appimage-freecad')
         saved = workspace()
         for tool, arguments in [

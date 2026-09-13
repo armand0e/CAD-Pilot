@@ -12,7 +12,72 @@ from unittest.mock import AsyncMock, patch
 from pi_fixture import pi_model, messages as pi_messages, message_text
 from server.agent import AgentRunner
 from server.projects import Project, ROOT
-from server.source_workspace import SourceWorkspace
+from server.source_workspace import SourceWorkspace, SUPPLIED_FILES
+
+
+class WorkspaceUpgradeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.project = Project.create(self.root / 'projects', 'freecad')
+        self.work = SourceWorkspace(self.project)
+
+    async def test_old_knowledge_cannot_hide_or_replace_installed_guide(self):
+        from server.knowledge import design_notes
+        knowledge = self.root / 'knowledge'
+        knowledge.mkdir()
+        (knowledge / 'personal-notes.md').write_text('Keep my enclosure notes.\n')
+        (knowledge / 'learned_facts.jsonl').write_text('{"statement":"Keep this fact"}\n')
+        for old_guide in (None, 'Outdated workspace instructions from an earlier release.\n'):
+            with self.subTest(old_guide=old_guide):
+                if old_guide:
+                    (knowledge / 'source-workspace.md').write_text(old_guide)
+                before = {p.name: p.read_bytes() for p in knowledge.iterdir()}
+                with patch('server.source_workspace.ROOT', self.root):
+                    self.work.ensure()
+                with patch('server.knowledge.KNOWLEDGE', knowledge):
+                    notes = design_notes('workspace enclosure notes')
+                self.assertNotIn('source-workspace', notes['available'])
+                self.assertEqual(notes['notes'][0]['document'], 'personal-notes')
+                self.assertEqual(self.work.file('CAD_GUIDE.md').read_bytes(), SUPPLIED_FILES['CAD_GUIDE.md'].read_bytes())
+                self.assertEqual({p.name: p.read_bytes() for p in knowledge.iterdir()}, before)
+
+    async def test_recover_partially_seeded_project_without_overwriting_draft(self):
+        # The affected release seeded these files before failing to read the guide.
+        self.work.path.mkdir()
+        self.work.seed(None)
+        original_state = self.work.meta.read_bytes()
+        self.work.file('model.py').write_text('# A draft created before reconnecting.\n')
+        self.work.file('notes.txt').write_text('Retain these dimensions.\n')
+        self.assertFalse(self.work.file('CAD_GUIDE.md').exists())
+        self.assertFalse((self.project.path / 'spec-state.json').exists())
+        self.work.ensure()
+        self.work.record_inputs([{'t': 'user', 'event_id': 'first-request', 'text': 'Make a raspberry.'}])
+        self.work.ensure()
+        self.assertEqual(self.work.meta.read_bytes(), original_state)
+        self.assertEqual(self.work.file('model.py').read_text(), '# A draft created before reconnecting.\n')
+        self.assertEqual(self.work.file('notes.txt').read_text(), 'Retain these dimensions.\n')
+        self.assertEqual(self.work.file('CAD_GUIDE.md').read_bytes(), SUPPLIED_FILES['CAD_GUIDE.md'].read_bytes())
+        self.assertEqual(self.work.spec()['requirements'][0]['text'], 'Make a raspberry.')
+        self.assertTrue(self.work.dirty())
+
+    @unittest.skipUnless((ROOT / 'pi/node_modules/@earendil-works/pi-coding-agent').is_dir(), 'Pi installation required')
+    async def test_missing_resources_fail_before_starting_pi_or_seeding_files(self):
+        from server.pi_agent import PiBridge
+        session = SimpleNamespace(project=self.project, engine='hybrid', manual_changes=False,
+                                  app={'name': 'FreeCAD'}, screen=SimpleNamespace(release_inputs=None), state_dir=None)
+        runner = AgentRunner(session, {'agent': {'native_operations': True}, 'policy': {},
+            'planner': {'base_url': 'http://127.0.0.1:1/v1', 'model': 'fixture'}, 'research': {'enabled': False}})
+        bridge = PiBridge(runner, {'project': self.project})
+        with patch.dict(SUPPLIED_FILES, {'CAD_GUIDE.md': self.root / 'missing-guide.md'}), \
+                patch('server.pi_agent.asyncio.create_subprocess_exec', new_callable=AsyncMock) as spawn:
+            with self.assertRaises(FileNotFoundError):
+                await bridge.start()
+            spawn.assert_not_called()
+        self.assertIsNone(bridge.proc)
+        self.assertFalse(self.work.path.exists())
+        self.assertFalse(self.work.meta.exists())
 
 
 class WorkspaceTests(unittest.IsolatedAsyncioTestCase):

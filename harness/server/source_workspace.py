@@ -18,6 +18,10 @@ from .cad_sandbox import execute
 MAX_FILE = 64 * 1024 * 1024
 MAX_TEXT = 1024 * 1024
 RESERVED = {'design-spec.json', 'CAD_GUIDE.md', 'cad_paths.py'}
+# Required software resources must not live in the persisted knowledge volume:
+# an existing Docker volume hides files added to that directory in a new image.
+SERVER = Path(__file__).resolve().parent
+SUPPLIED_FILES = {'CAD_GUIDE.md': SERVER / 'guides/source-workspace.md', 'cad_paths.py': SERVER / 'cad_paths.py'}
 
 
 def digest(data):
@@ -70,13 +74,15 @@ class SourceWorkspace:
         return json.loads(self.meta.read_text()) if self.meta.exists() else {}
 
     def ensure(self):
+        # Check the installed resources before creating or seeding project files.
+        supplied = {name: source.read_bytes() for name, source in SUPPLIED_FILES.items()}
         self.file('.')
         with self.project.lock():
             self.path.mkdir(exist_ok=True, mode=0o700)
             if not self.meta.exists():
                 self.seed(self.project.read()['head'])
-            for name, source in (('CAD_GUIDE.md', ROOT / 'knowledge/source-workspace.md'), ('cad_paths.py', ROOT / 'server/cad_paths.py')):
-                path, data = self.file(name), source.read_bytes()
+            for name, data in supplied.items():
+                path = self.file(name)
                 if path.is_file() and path.read_bytes() == data:
                     continue
                 fd, pending = tempfile.mkstemp(dir=self.path, prefix='.supplied-')

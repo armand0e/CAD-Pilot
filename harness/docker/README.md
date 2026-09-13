@@ -6,7 +6,7 @@ From the repository root:
 harness/docker.sh up       # initialize private credentials, build, start, wait for health
 harness/docker.sh url      # connection URL and location of initial credentials
 harness/docker.sh connect  # shell in the running CAD container
-harness/docker.sh check    # real CAD/compiler/browser/PDF/search smoke check
+harness/docker.sh check    # source workspace, CAD/compiler/browser/PDF/search smoke check
 ```
 
 Open **http://127.0.0.1:7801**, sign in as **admin**, and read your generated password
@@ -220,6 +220,11 @@ sources and dependency lockfile, so paired containers build the same runtime.
 
 Checks: the harness unittest suite runs the real Pi SDK against a deterministic HTTP model;
 `portal_browser_check.py` exercises real Docker pairing, model turns and reference upload.
+After building a worker image, run `python3 harness/tests/docker_workspace_upgrade_check.py cadpilot:paired`
+to exercise an upgrade with a private temporary knowledge volume. It checks missing and stale
+guides, recovery of an unfinished workspace, Pi requests/tools/session resume, a real source
+build, and preservation of saved notes and facts. Required workspace guides ship in
+`harness/server/guides/`; the `knowledge` volume holds editable notes and learned facts.
 
 ### Connection diagnostics
 

@@ -48,7 +48,7 @@ def runtime_bundle(pairing, origin, image='', source_root=None):
         command = 'docker compose up -d --build --wait' if not image else 'docker compose pull\ndocker compose up -d --wait'
         write('README.txt', f'CADPilot — your CAD computer\n\nInstall Docker with Compose (Linux x86_64, or Docker Desktop with amd64 support).\nExtract this folder, open a terminal here, and run:\n\n{command}\n\nReturn to {origin}/onboarding to configure your model and enter the studio.\nThe pairing token expires in 24 hours. If a first build takes longer, generate a fresh setup, replace pairing.env, then rerun Compose.\nProjects remain in Docker volumes when the container is stopped or updated.\nStop: docker compose stop\nStart: docker compose up -d\nLogs: docker compose logs --tail=50 cad\nShell: docker compose exec cad bash\nDo not share this folder: it contains your account pairing code.\nNo inbound port or extra tunnel is required on this computer.\n')
         if not image:
-            patterns = ['src/cad1000/*.py', 'harness/server/*.py', 'harness/server/*.FCMacro', 'harness/server/*.cfg',
+            patterns = ['src/cad1000/*.py', 'harness/server/*.py', 'harness/server/*.FCMacro', 'harness/server/*.cfg', 'harness/server/guides/*.md',
                         'harness/web/**/*', 'harness/knowledge/*.md', 'harness/config.yaml', 'harness/requirements-lock.txt',
                         'harness/pi/*.mjs', 'harness/pi/package.json', 'harness/pi/package-lock.json',
                         'harness/docker/Dockerfile', 'harness/docker/entrypoint.sh', 'harness/docker/smoke.py', '.dockerignore']

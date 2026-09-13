@@ -144,3 +144,13 @@ with open(os.environ['CAD_TEST_LOG'], 'w') as out:
         self.assertEqual(compose['services']['searxng']['image'], SEARXNG_IMAGE)
         self.assertEqual(compose['services']['cad']['volumes'], bundle['services']['cad']['volumes'])
         self.assertEqual(compose['services']['cad']['security_opt'], bundle['services']['cad']['security_opt'])
+
+    def test_source_bundle_contains_installed_workspace_resources(self):
+        import io
+        import zipfile
+        from server.bundles import runtime_bundle
+        from server.source_workspace import SUPPLIED_FILES
+        with zipfile.ZipFile(io.BytesIO(runtime_bundle({'id': IDENTITY, 'token': TOKEN}, 'https://cad.example'))) as archive:
+            for path in SUPPLIED_FILES.values():
+                self.assertEqual(archive.read('source/' + path.relative_to(ROOT).as_posix()), path.read_bytes())
+            self.assertNotIn('source/harness/knowledge/source-workspace.md', archive.namelist())
