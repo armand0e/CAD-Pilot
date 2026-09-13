@@ -33,6 +33,12 @@ def pi_model(runner, respond):
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': {'message': str(error) or type(error).__name__}}).encode())
                 return
+            if response.get('status', 200) != 200:
+                self.send_response(response['status'])
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': {'message': response['error']}}).encode())
+                return
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
             self.end_headers()

@@ -14,15 +14,20 @@ from pathlib import Path
 
 STATE = Path(__file__).resolve().parents[1] / 'state'
 FILE = STATE / 'settings.json'
-EFFORTS = ('low', 'medium', 'high', 'xhigh')
+EFFORTS = ('off', 'low', 'medium', 'high', 'xhigh')
 KEEP_KEY = '••••••••'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9 ._:/-]{0,59}\Z')
+
+
+def model_efforts(model):
+    return tuple(e for e in EFFORTS if e != 'high') if re.search(r'qwen3[._-]?8', model, re.I) else EFFORTS
 
 
 def default_settings(config):
     planner = config.get('planner', {})
     return {'version': 1, 'web_search': bool(config.get('research', {}).get('enabled', False)),
-            'reasoning_effort': config.get('agent', {}).get('native_reasoning_effort') or planner.get('reasoning_effort') or 'medium',
+            'reasoning_effort': ('off' if config.get('agent', {}).get('model_thinking') is False else
+                                 config.get('agent', {}).get('native_reasoning_effort') or planner.get('reasoning_effort') or 'medium'),
             'active_model': planner.get('model', 'default'),
             'models': [{'name': planner.get('model', 'default'), 'base_url': planner.get('base_url', ''), 'model': planner.get('model', ''),
                         'api_key': '', 'context_window': planner.get('max_model_len'), 'thinking_token_budget': config.get('agent', {}).get('native_thinking_token_budget')}]}
@@ -76,6 +81,9 @@ def validate(data, previous):
     effort = str(data.get('reasoning_effort', 'medium'))
     if effort not in EFFORTS:
         raise ValueError(f'reasoning_effort must be one of {EFFORTS}')
+    active_model = next(m for m in models if m['name'] == active)
+    if effort == 'high' and 'high' not in model_efforts(active_model['model']):
+        effort = 'xhigh'
     return {'version': 1, 'web_search': bool(data.get('web_search', True)), 'reasoning_effort': effort, 'active_model': active, 'models': models}
 
 
@@ -101,6 +109,7 @@ def apply(config, settings):
         planner['max_model_len'] = active['context_window']
     agent = config.setdefault('agent', {})
     agent['native_reasoning_effort'] = settings['reasoning_effort']
+    agent['model_thinking'] = settings['reasoning_effort'] != 'off'
     if active.get('thinking_token_budget'):
         agent['native_thinking_token_budget'] = active['thinking_token_budget']
         planner['thinking_token_budget'] = min(active['thinking_token_budget'], 4096)
@@ -116,5 +125,6 @@ def public(settings):
     view = copy.deepcopy(settings)
     for item in view['models']:
         item['has_key'] = bool(item.pop('api_key', ''))
-    view['efforts'] = list(EFFORTS)
+    active = next(m for m in settings['models'] if m['name'] == settings['active_model'])
+    view['efforts'] = list(model_efforts(active['model']))
     return view

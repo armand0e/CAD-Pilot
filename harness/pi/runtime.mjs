@@ -15,7 +15,7 @@ const send = (value) => process.stdout.write(JSON.stringify(value) + '\n');
 const pendingTools = new Map();
 const inputs = [];
 const receipts = new Set();
-let session, runtime, settings, config, running, closing = false;
+let session, runtime, settings, config, running, lastAssistant, closing = false;
 let controls = Promise.resolve();
 
 function redact(value) {
@@ -56,14 +56,20 @@ function tool(definition) {
 async function configure(modelConfig) {
   const c = modelConfig;
   const contextWindow = c.contextWindow || 32768;
-  const maxTokens = Math.min(c.maxTokens || Math.max(8192, (c.thinkingBudget || 0) + 8192), Math.floor(contextWindow / 2));
+  // OpenAI-compatible local servers share the context window between input
+  // and output. Pi clamps each request to its remaining context and handles
+  // compaction; an invented 8k ceiling can consume the whole reply in thinking.
+  const maxTokens = c.maxTokens || contextWindow;
   // The app accepts OpenAI-compatible endpoints. Pi implements their transport
   // and model-specific thinking conventions; credentials stay in memory.
   const compat = { supportsDeveloperRole: false, supportsStore: false, maxTokensField: 'max_tokens' };
-  if (c.qwenTemplate) Object.assign(compat, { thinkingFormat: 'qwen-chat-template', supportsReasoningEffort: false,
+  if (c.qwenTemplate) Object.assign(compat, { thinkingFormat: 'chat-template', supportsReasoningEffort: false,
+    chatTemplateKwargs: { enable_thinking: { $var: 'thinking.enabled' }, preserve_thinking: true,
+      reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true } },
     ...(c.thinkingBudget ? { thinkingTokenBudgetField: 'thinking_token_budget' } : {}) });
   runtime.registerProvider('cadpilot', { baseUrl: c.baseUrl, api: 'openai-completions', models: [{
-    id: c.id, name: c.id, reasoning: c.thinking !== false, input: ['text', 'image'],
+    id: c.id, name: c.id, reasoning: c.qwenTemplate || c.thinking !== false, input: ['text', 'image'],
+    ...(c.qwenTemplate ? { thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'medium', high: 'xhigh', xhigh: 'xhigh' } } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow, maxTokens, compat,
   }] });
   await runtime.setRuntimeApiKey('cadpilot', c.apiKey || 'local-no-key');
@@ -127,6 +133,13 @@ async function initialize(options) {
     settingsManager: settings, sessionManager: manager }));
   session.setActiveToolsByName(config.activeTools);
   session.subscribe(event => {
+    if (event.type === 'message_end' && event.message.role === 'assistant') {
+      const message = event.message;
+      lastAssistant = message;
+      send({ type: 'model_response', stopReason: message.stopReason, usage: message.usage,
+        model: message.model, hasText: message.content.some(c => c.type === 'text' && c.text.trim()),
+        toolNames: message.content.filter(c => c.type === 'toolCall').map(c => c.name) });
+    }
     if (event.type === 'message_end' && event.message.role === 'user') {
       const content = event.message.content;
       const text = typeof content === 'string' ? content : content.filter(c => c.type === 'text').map(c => c.text).join('');
@@ -150,7 +163,7 @@ async function initialize(options) {
     } else if (event.type !== 'agent_end' && event.type !== 'turn_end') {
       send({ type: 'event', event: redact(event) });
     }
-    if (event.type === 'message_end' || event.type === 'auto_compaction_end') {
+    if (event.type === 'message_end' || event.type === 'compaction_end') {
       queueMicrotask(() => {
         // Pi defers the first file write until an assistant message exists.
         // The app's durable inbox holds the input until then, including images.
@@ -176,12 +189,21 @@ async function input(message) {
     return;
   }
   let accepted;
+  lastAssistant = undefined;
   const preflight = new Promise(resolve => { accepted = resolve; });
   running = session.prompt(message.text, { images: message.images, expandPromptTemplates: false,
     preflightResult: success => accepted(success) });
   running.then(() => {
-    const last = session.messages.findLast(m => m.role === 'assistant');
+    // Pi may remove a truncated message from active context before attempting
+    // recovery. Keep the actual final provider ending even if recovery cannot
+    // compact this conversation yet.
+    const last = lastAssistant;
     if (last?.stopReason === 'error') send({ type: 'runtime_error', message: last.errorMessage || 'Model request failed' });
+    else if (last?.stopReason === 'length') send({ type: 'runtime_error',
+      message: 'The model reached its output limit before finishing. Your conversation is saved; send a message to continue.' });
+    else if (last?.stopReason === 'stop' && !last.content.some(c => (c.type === 'text' && c.text.trim()) || c.type === 'toolCall')) {
+      send({ type: 'runtime_error', message: 'The model stopped without an answer. Your conversation is saved; send a message to continue.' });
+    }
   }).catch(error => {
     accepted(false);
     send({ type: 'runtime_error', message: error.message });

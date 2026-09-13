@@ -85,6 +85,20 @@ class UploadLimitTests(unittest.TestCase):
                 store.validate({'models': [{'name': 'test', 'model': 'test', 'base_url': 'http://localhost:8000/v1', 'thinking_token_budget': budget}]}, previous=None)
 
 class ContextWindowTests(unittest.TestCase):
+    def test_off_disables_thinking_and_qwen_uses_supported_efforts(self):
+        settings = store.validate({'models': [
+            {'name': 'qwen', 'model': 'qwen3.8-27b', 'base_url': 'http://localhost:8000/v1'}],
+            'reasoning_effort': 'off'}, previous=None)
+        config = {'planner': {}, 'agent': {}}
+        store.apply(config, settings)
+        self.assertFalse(config['agent']['model_thinking'])
+        self.assertEqual(store.public(settings)['efforts'], ['off', 'low', 'medium', 'xhigh'])
+        settings['reasoning_effort'] = 'medium'
+        store.apply(config, settings)
+        self.assertTrue(config['agent']['model_thinking'])
+        settings['reasoning_effort'] = 'high'
+        self.assertEqual(store.validate(settings, previous=None)['reasoning_effort'], 'xhigh')
+
     def test_context_window_is_per_model_and_switching_removes_old_limit(self):
         settings = store.validate({'models': [
             {'name': 'local', 'model': 'local', 'base_url': 'http://localhost:8000/v1', 'context_window': 65536},

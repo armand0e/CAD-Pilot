@@ -89,7 +89,12 @@ async def _endpoint_health() -> dict:
                 ids = {item.get("id") for item in items}
                 _endpoint_cache[name] = CONFIG[name]["model"] in ids
                 served = next((item for item in items if item.get("id") == CONFIG[name]["model"]), None)
-                if served and not CONFIG[name].get('max_model_len') and isinstance(served.get("max_model_len"), int):
+                # Explicit user limits stay fixed; autodetected limits follow
+                # the server when it is restarted with a different context size.
+                explicit_window = (next((m.get('context_window') for m in SETTINGS['models']
+                                        if m['name'] == SETTINGS['active_model']), None)
+                                   if name == 'planner' else CONFIG[name].get('max_model_len'))
+                if served and not explicit_window and type(served.get('max_model_len')) is int and served['max_model_len'] > 0:
                     CONFIG[name]["max_model_len"] = served["max_model_len"]
             except Exception:  # noqa: BLE001
                 _endpoint_cache[name] = False

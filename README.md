@@ -27,6 +27,13 @@ volumes. Rerun a fresh onboarding command to update/reconnect the same installat
 Connection commands are private; do not share them. Model weights are not included.
 For a model served on the Docker host, use `http://host.docker.internal:8000/v1`.
 
+The reasoning menu includes **Off**. Qwen3.8 uses **Low**, **Medium**, and **Xhigh**;
+these are sent in `chat_template_kwargs.reasoning_effort`, while Off sends
+`enable_thinking: false`. An empty thinking budget adds no explicit token budget.
+Pi fits output into the remaining context; CADPilot does not impose an 8k output cap.
+Leave the context window empty to detect changes when your model server restarts.
+Runtime fixes require updating the paired container, as well as the public portal.
+
 ## Run your own portal
 
 ```bash

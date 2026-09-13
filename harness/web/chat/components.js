@@ -362,7 +362,7 @@ export class AssistantTurn {
       answer.update(segment,replaying);
     }
     renderGroup();
-    this.footer.textContent=turn.status==='running'?'':turn.status==='completed'?'Response complete':turn.status==='paused'?'Waiting for your guidance':turn.status==='failed'?'Needs attention · '+(turn.reason || ''):turn.status==='interrupted'?(turn.interruption==='guidance'?'Updated with your guidance':'Interrupted · previous work is preserved'):'Stopped · your work is preserved';
+    this.footer.textContent=turn.status==='running'?'':turn.status==='completed'?'Response complete':turn.status==='paused'?'Waiting for your guidance':turn.status==='failed'?'Needs attention · '+(turn.reason || ''):turn.status==='interrupted'?(turn.interruption==='guidance'?'Updated with your guidance':'Interrupted · '+(turn.reason || 'previous work is preserved')):'Stopped · your work is preserved';
     this.footer.hidden=!this.footer.textContent;
     this.footer.title=turn.reason || '';
   }

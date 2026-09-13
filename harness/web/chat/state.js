@@ -220,7 +220,18 @@ export function reduceChat(state, event) {
       if(q && !terminal(q.status)){q.status='completed';q.finishedAt=event.ts;q.answer={selected:event.selected || [],text:event.text || '',summary:event.summary || ''};}
       break;
     }
-    case 'done': turn.reason=event.reason; settleTurn(turn,event,/stopped|cancelled/i.test(event.reason) ? 'cancelled' : 'completed'); break;
+    case 'done': {
+      // Older workers emit a success event even after a provider error or a
+      // thinking-only response. Preserve the failure when replaying that log.
+      if(turn.status==='failed')break;
+      const lastAnswer = turn.segments.findLastIndex(s=>s.kind==='answer' && s.text?.trim());
+      const unansweredThinking = turn.segments.slice(lastAnswer+1).some(s=>s.kind==='thinking' && s.id.startsWith('thinking-') && s.text?.trim());
+      if(event.reason==='Reply sent; the model stays open for more changes.' && (lastAnswer===-1 || unansweredThinking)) {
+        turn.reason='The model stopped without an answer. Send a message to continue.';
+        settleTurn(turn,event,'interrupted'); break;
+      }
+      turn.reason=event.reason; settleTurn(turn,event,/stopped|cancelled/i.test(event.reason) ? 'cancelled' : 'completed'); break;
+    }
     case 'error': turn.reason=event.message; settleTurn(turn,event,'failed'); break;
   }
   return true;

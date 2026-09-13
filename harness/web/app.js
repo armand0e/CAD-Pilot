@@ -608,13 +608,18 @@ function updateAgentControls(msg) {
     case "action": showAgentAction(msg); break;
     case "step_done": state.completed++; break;
     case "recovery": updatePhase("recovering"); break;
-    case "done": updatePhase(msg.reason.includes("stopped") ? "stopped" : msg.reason.includes("budget") ? "budget" : "review"); break;
+    case "done": {
+      const turn = chatPanel.state.byId.get(msg.turn_id || chatPanel.state.current);
+      updatePhase(['failed', 'interrupted'].includes(turn?.status) ? 'error' : msg.reason.includes("stopped") ? "stopped" : msg.reason.includes("budget") ? "budget" : "review"); break;
+    }
     case "error": updatePhase("error"); toast(msg.message, "err"); break;
   }
   syncControls();
 }
 
 function updatePhase(phase) {
+  const turn = chatPanel.state.byId.get(chatPanel.state.current);
+  if (phase === 'awaiting' && ['failed', 'interrupted'].includes(turn?.status)) phase = 'error';
   if (phase === 'researching') { $('run-phase').textContent = 'Looking up sources and specifications'; return; }
   if (phase === 'awaiting_answer') { $('run-phase').textContent = 'Waiting for your answer'; return; }
   if (phase === 'modeling' || phase === 'building') { $('run-phase').textContent = phase === 'modeling' ? 'Designing the parametric model' : 'Checking geometry and saving exports'; return; }
@@ -704,7 +709,7 @@ const modelMenu = popover('model-name-label', 'menu-model', menu => {
 });
 const effortMenu = popover('model-effort-label', 'menu-effort', menu => {
   menu.replaceChildren();
-  for (const effort of (state.settings?.efforts || ['low', 'medium', 'high', 'xhigh'])) menu.append(menuItem(effort.charAt(0).toUpperCase() + effort.slice(1), '', effort === state.settings?.reasoning_effort, async () => { effortMenu.close(); try { await saveSettings({ reasoning_effort: effort }); } catch (e) { toast(e.message, 'err'); } }));
+  for (const effort of (state.settings?.efforts || ['off', 'low', 'medium', 'high', 'xhigh'])) menu.append(menuItem(effort.charAt(0).toUpperCase() + effort.slice(1), '', effort === state.settings?.reasoning_effort, async () => { effortMenu.close(); try { await saveSettings({ reasoning_effort: effort }); } catch (e) { toast(e.message, 'err'); } }));
 });
 function modelRow(model, active, index) {
   const row = document.createElement('div'); row.className = 'settings-model'; row.dataset.index = index;

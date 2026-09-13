@@ -30,7 +30,8 @@ def model_config(runner):
     planner, agent = runner.config['planner'], runner.config['agent']
     return {'baseUrl': planner['base_url'].rstrip('/'), 'id': planner['model'], 'apiKey': planner.get('api_key', ''),
             'contextWindow': planner.get('max_model_len') or agent.get('max_model_len') or 32768,
-            'thinking': agent.get('model_thinking', True), 'effort': agent.get('native_reasoning_effort', 'medium'),
+            'thinking': agent.get('model_thinking', True) and agent.get('native_reasoning_effort') != 'off',
+            'effort': agent.get('native_reasoning_effort', 'medium'),
             'thinkingBudget': agent.get('native_thinking_token_budget'),
             'qwenTemplate': 'qwen' in planner['model'].lower(),
             'timeoutMs': (runner._request_timeout(agent.get('native_request_timeout_s')) or 0) * 1000}
@@ -132,6 +133,7 @@ class PiBridge:
         self.activity = asyncio.Event()
         self.idle = True
         self.error = None
+        self.turn_error = None
         self.sent = set()
         self.model = None
         self.active_tools = None
@@ -226,6 +228,10 @@ class PiBridge:
                         task.cancel()
                 elif kind == 'event':
                     self._event(message['event'])
+                elif kind == 'model_response':
+                    self.runner.emit({'t': 'model_response', 'timeline': False,
+                                      'turn_id': self.current_turn,
+                                      **{k: message.get(k) for k in ('stopReason', 'usage', 'model', 'hasText', 'toolNames')}})
                 elif kind == 'usage' and message.get('usage'):
                     usage = message['usage']
                     self.runner.context_usage = {'prompt_tokens': usage.get('tokens'), 'completion_tokens': 0,
@@ -237,7 +243,9 @@ class PiBridge:
                     self.runner._wake.set()
                 elif kind == 'busy':
                     self.idle = False
+                    self.turn_error = None
                 elif kind == 'runtime_error':
+                    self.turn_error = message['message']
                     self.runner.emit({'t': 'error', 'message': message['message']})
         except (ValueError, OSError, asyncio.IncompleteReadError) as error:
             self.error = RuntimeError('Pi bridge failed: ' + str(error))
@@ -293,19 +301,20 @@ class PiBridge:
                     runner.emit({'t': 'tool_input_done', **identity, 'tool': call['name'], 'arguments': call['arguments'], 'status': 'completed'})
         elif kind == 'message_end' and event['message']['role'] == 'assistant':
             message = event['message']
-            failed = message.get('stopReason') in ('error', 'aborted')
+            failed = message.get('stopReason') in ('error', 'aborted', 'length')
+            status = {'error': 'failed', 'aborted': 'cancelled', 'length': 'interrupted'}.get(message.get('stopReason'), 'completed')
             if self.answer_text:
                 runner.emit({'t': 'answer_done', 'answer_id': self.message_id, 'turn_id': self.message_turn,
-                             'message': message.get('errorMessage', '') if failed else '', 'status': 'cancelled' if failed else 'completed'})
+                             'message': message.get('errorMessage', '') if failed else '', 'status': status})
             if self.thought_text:
                 runner.emit({'t': 'thinking_done', 'operation_id': 'thinking-' + self.message_id,
-                             'turn_id': self.message_turn, 'status': 'cancelled' if failed else 'completed'})
+                             'turn_id': self.message_turn, 'status': status})
         elif kind == 'tool_execution_end':
             runner.emit({'t': 'tool_settled', **self.streams.get(event['toolCallId'], {'operation_id': event['toolCallId']}),
                          'status': 'failed' if event['isError'] else 'completed'})
-        elif kind == 'auto_compaction_start':
+        elif kind == 'compaction_start':
             runner.emit({'t': 'note', 'message': 'Pi is compacting the conversation.'})
-        elif kind == 'auto_compaction_end':
+        elif kind == 'compaction_end':
             runner.emit({'t': 'note', 'message': event.get('errorMessage') or ('Compaction cancelled.' if event.get('aborted') else 'Pi saved the conversation summary; continuing.')})
         elif kind == 'auto_retry_start':
             runner.emit({'t': 'note', 'message': f"Pi is retrying the model request ({event['attempt']}/{event['maxAttempts']})."})
@@ -440,7 +449,8 @@ async def run_pi(runner, intent, *, persistent=False):
                     bridge.sent.add(item['id'])
             if bridge.idle and not announced:
                 runner.pending_guidance = None
-                runner.emit({'t': 'done', 'reason': 'Reply sent; the model stays open for more changes.', 'verified': False})
+                if not bridge.turn_error:
+                    runner.emit({'t': 'done', 'reason': 'Reply sent; the model stays open for more changes.', 'verified': False})
                 runner._save_conversation()
                 announced = True
                 if not persistent:

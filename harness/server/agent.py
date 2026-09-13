@@ -764,6 +764,9 @@ class AgentRunner:
                     extra[key] = overrides[key]
                 elif key in endpoint:
                     extra[key] = endpoint[key]
+            if 'qwen' in endpoint.get('model', '').lower() and 'reasoning_effort' in extra:
+                effort = extra.pop('reasoning_effort')
+                extra['chat_template_kwargs']['reasoning_effort'] = 'xhigh' if effort == 'high' else effort
         if not (extra.get('thinking_token_budget') or endpoint.get('vendor_extensions') or 'qwen' in endpoint.get('model', '').lower()):
             extra.pop('chat_template_kwargs', None)
         budget = extra.get('thinking_token_budget')
