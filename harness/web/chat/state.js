@@ -134,10 +134,18 @@ export function reduceChat(state, event) {
       const op=segment(turn,event.operation_id);if(op?.status!=='preparing')break;
       if(event.offset>=[...op.rawInput].length)op.pending.set(event.offset,event.text);
       while(op.pending.has([...op.rawInput].length)){const offset=[...op.rawInput].length;const delta=op.pending.get(offset);op.pending.delete(offset);if(!delta)break;op.rawInput+=delta;}
-      if(event.tool)op.label='Preparing '+event.tool.replaceAll('_',' ');
+      if(event.tool){op.input.tool=event.tool;op.label='Preparing '+event.tool.replaceAll('_',' ');}
       break;
     }
-    case 'tool_input_done': {const op=segment(turn,event.operation_id);if(op?.status==='preparing')op.inputComplete=true;break;}
+    case 'tool_input_done': {
+      const op=segment(turn,event.operation_id);
+      if(op?.status==='preparing') {
+        op.inputComplete=true;
+        if(event.tool){op.input.tool=event.tool;op.label='Preparing '+event.tool.replaceAll('_',' ');}
+        if(event.arguments)op.input.arguments=event.arguments;
+      }
+      break;
+    }
     case 'tool_settled': {
       const op=segment(turn,event.operation_id);if(op && (!terminal(op.status) || (op.status==='interrupted' && event.status==='cancelled'))){op.status=event.status;op.finishedAt=event.ts;op.result={message:event.message};if(op.status==='failed')op.error=event.message;}break;
     }

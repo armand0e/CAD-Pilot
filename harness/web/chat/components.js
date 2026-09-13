@@ -141,7 +141,15 @@ export class TimelineEntry {
     const reviewLabel=op.review ? ({achieved:'objective observed',progress:'partial progress',blocked:'needs correction',uncertain:'unverified'}[op.review.status] || 'unverified') : null;
     if(op.kind==='cad' && reviewLabel)secondary=`Executed · ${reviewLabel}`;
     if(op.kind==='cad' && running && op.errors?.length)secondary='Correcting model';
-    if(op.kind==='proposal' && op.status==='completed')label='Considered '+(op.label || 'CAD operation').replace(/^Preparing /,'');
+    if(op.kind==='proposal') {
+      const action=(op.input.tool || op.label || 'Tool operation').replace(/^Preparing /,'').replaceAll('_',' ');
+      label=op.status==='preparing' ? `Preparing ${action}` : action.charAt(0).toUpperCase()+action.slice(1);
+      if(op.input.tool==='define_parameter') {
+        if(op.status==='completed')label='Defined parameter';
+        const args=op.input.arguments;
+        if(args?.name)label+=` · ${args.name}${args.value!==undefined ? ` = ${args.value}` : ''}`;
+      }
+    }
     if(this.label.textContent!==label)this.label.textContent=label;
     this.label.title=label;if(this.status.textContent!==secondary)this.status.textContent=secondary;
     this.head.setAttribute('aria-label',`${label} · ${secondary}. Details`);
