@@ -166,7 +166,10 @@ class AgentImageTests(unittest.IsolatedAsyncioTestCase):
         public = self.project.commit(views, None)
         buffer = io.BytesIO(); Image.new('RGB', (200, 100), 'blue').save(buffer, 'PNG')
         stored = store_image(self.project.path / 'attachments', buffer.getvalue(), 'sketch.png')
-        self.runner._accept_attachments([stored['id'], 'nope.jpg'])
+        with self.assertRaisesRegex(ValueError, 'Reference image nope.jpg is unavailable'):
+            self.runner._accept_attachments([stored['id'], 'nope.jpg'])
+        self.assertEqual(self.runner.attachments, [])
+        self.runner._accept_attachments([stored['id']])
         self.runner._last_selection = [{'document': 'Model', 'object': 'Op001', 'subelements': ['Face1']}]
         ctx = {'project': self.project, 'expected_head': public['head'], 'state': state, 'ledger': saved, 'geometry': public['geometry']}
         messages = self.runner._native_messages([{'role': 'user', 'content': 'knob'}], ctx)

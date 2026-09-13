@@ -34,6 +34,15 @@ Pi fits output into the remaining context; CADPilot does not impose an 8k output
 Leave the context window empty to detect changes when your model server restarts.
 Runtime fixes require updating the paired container, as well as the public portal.
 
+**Images per request** is configurable for each provider in Settings (default 16,
+matching the local vLLM endpoint). CADPilot uses Pi's context hook to send current
+CAD views and prioritize uploaded references and explicitly requested images.
+Superseded CAD pixels and duplicate images leave the outgoing request; original
+images, revision records, tool results and Pi's saved conversation remain intact.
+`view_image` can reopen saved CAD views by IDs such as `cad:r0001:top`, including
+after compaction. Oversized reference collections show a notice and remain
+available for the assistant to inspect in batches. Pi still owns compaction.
+
 ## Run your own portal
 
 ```bash

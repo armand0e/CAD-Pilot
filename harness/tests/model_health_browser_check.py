@@ -67,6 +67,12 @@ def main():
                 page.goto('https://model-health-fixture.test/')
                 page.locator('.session-tab').first.click()
                 expect(page.locator('#connection-status')).to_have_text('Live')
+                page.locator('#btn-settings').click()
+                image_limit = page.get_by_role('spinbutton', name='Images per request (endpoint limit; default 16)', exact=True)
+                image_limit.fill('3')
+                page.locator('#settings-save').click()
+                expect(page.locator('#settings-dialog')).not_to_be_visible()
+                assert settings['models'][0]['max_images_per_request'] == 3
                 expect(page.locator('#pill-planner')).to_have_text('Assistant')
                 page.locator('#model-effort-label').click()
                 page.locator('#menu-effort').get_by_text('Off', exact=True).click()
@@ -86,6 +92,11 @@ def main():
                     event = {'t': kind, 'turn_id': turn, 'id': len(events) + 1, 'ts': time.time(), **fields}
                     events.append(event)
                     sockets[-1].send(json.dumps(event))
+                emit('image_context', 'images', limit=3, reference_total=6, reference_omitted=3, timeline=False)
+                expect(page.locator('#image-context-notice')).to_contain_text('Viewing 3 of 6 reference images')
+                expect(page.locator('[data-turn-id="images"]')).to_have_count(0)
+                emit('image_context', 'images', limit=3, reference_total=2, reference_omitted=0, timeline=False)
+                expect(page.locator('#image-context-notice')).to_be_hidden()
                 reason = 'Reply sent; the model stays open for more changes.'
                 emit('user', 'failed', text=message)
                 emit('error', 'failed', message='502 status code (no body)')

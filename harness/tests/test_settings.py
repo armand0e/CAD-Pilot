@@ -85,6 +85,20 @@ class UploadLimitTests(unittest.TestCase):
                 store.validate({'models': [{'name': 'test', 'model': 'test', 'base_url': 'http://localhost:8000/v1', 'thinking_token_budget': budget}]}, previous=None)
 
 class ContextWindowTests(unittest.TestCase):
+    def test_image_capacity_is_per_provider_defaults_to_16_and_validates(self):
+        models = [{'name': 'local', 'model': 'local', 'base_url': 'http://localhost:8000/v1', 'max_images_per_request': 3},
+                  {'name': 'other', 'model': 'other', 'base_url': 'http://localhost:9000/v1'}]
+        settings = store.validate({'models': models}, previous=None)
+        config = {'planner': {}, 'agent': {}}
+        store.apply(config, settings)
+        self.assertEqual(config['planner']['max_images_per_request'], 3)
+        settings['active_model'] = 'other'
+        store.apply(config, settings)
+        self.assertEqual(config['planner']['max_images_per_request'], 16)
+        for value in (0, -1, True, 1.5, '16'):
+            with self.assertRaises(ValueError):
+                store.validate({'models': [dict(models[0], max_images_per_request=value)]}, previous=None)
+
     def test_off_disables_thinking_and_qwen_uses_supported_efforts(self):
         settings = store.validate({'models': [
             {'name': 'qwen', 'model': 'qwen3.8-27b', 'base_url': 'http://localhost:8000/v1'}],

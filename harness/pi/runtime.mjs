@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { imageContext } from './image-context.mjs';
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import {
   createAgentSession, DefaultResourceLoader, defineTool, ModelRuntime,
@@ -17,6 +18,7 @@ const inputs = [];
 const receipts = new Set();
 let session, runtime, settings, config, running, lastAssistant, closing = false;
 let controls = Promise.resolve();
+let maxImages = 16;
 
 function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
@@ -55,6 +57,8 @@ function tool(definition) {
 
 async function configure(modelConfig) {
   const c = modelConfig;
+  maxImages = c.maxImagesPerRequest ?? 16;
+  if (!Number.isSafeInteger(maxImages) || maxImages < 1) throw new Error('Images per request must be a positive integer');
   const contextWindow = c.contextWindow || 32768;
   // OpenAI-compatible local servers share the context window between input
   // and output. Pi clamps each request to its remaining context and handles
@@ -117,6 +121,12 @@ async function initialize(options) {
     noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPromptOverride: () => config.systemPrompt,
     extensionFactories: [(pi) => {
+      const projectImages = imageContext(config.cwd);
+      pi.on('context', (event) => {
+        const projected = projectImages(event.messages, maxImages);
+        send({ type: 'image_context', ...projected.usage });
+        return { messages: projected.messages };
+      });
       pi.on('before_provider_request', (event) => {
         // Readable diagnostics without image blobs or API credentials. Never
         // replace Pi's payload, messages, or context in this observer.

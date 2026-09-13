@@ -1020,7 +1020,7 @@ model review, not mechanical fit certification.
 # goes through validate_operation, so the schemas here are guidance, not the trust boundary.
 # ---------------------------------------------------------------------------------------
 TOOL_DESCRIPTIONS = {
-    'view_image': 'Read a user/research image again, optionally cropping full-resolution pixels [left, top, right, bottom]. Use crop=[] for the full image. The tool result contains the image pixels.',
+    'view_image': 'Read an image by ID: a user/research image, saved CAD view (cad:r0001:top; iso/top/front/right), or archived context image. Optionally crop full-resolution pixels [left, top, right, bottom]. Use crop=[] for the full image. Returns pixels even when the original image is omitted from the current request. Use inspect to list saved CAD views.',
     'create_body': ('Create a new body from one solid. kind=box|rounded_box|cylinder|cone|sphere needs dimensions '
                     '(box [L,W,H] along x,y,z; rounded_box [L,W,H,R]; cylinder [RADIUS,H]; cone [R1,R2,H]; sphere [R]), at, anchor, axis. '
                     'kind=extrude needs profile (list of [x,y] in the local XY plane, corners in order, first not repeated), height, at, axis; '

@@ -555,6 +555,7 @@ function handleAgentEvent(msg) {
     if (state.question) input.placeholder = "Choose an option above, or type your answer here";
     $('web-search-toggle').disabled = msg.chat_protocol !== 1;
     if (msg.context_usage) { state.contextUsage = msg.context_usage; renderContextUsage(msg.context_usage); }
+    renderImageContext(msg.image_context);
     if (msg.persistence_warning) toast(msg.persistence_warning,'err');
     if (typeof msg.web_enabled === 'boolean') $('web-search-toggle').checked = msg.web_enabled;
     if (msg.task) { $("run-card").classList.remove("hidden"); $("run-task").textContent = msg.task; }
@@ -580,6 +581,7 @@ function updateAgentControls(msg) {
     case "web_setting": $('web-search-toggle').checked = msg.enabled; break;
     case "pause": state.paused = msg.paused; updatePhase(msg.paused ? "paused" : "planning"); break;
     case "context_usage": state.contextUsage = msg; renderContextUsage(msg); break;
+    case "image_context": renderImageContext(msg); break;
     case "question": state.question = msg; state.pending = false; updatePhase("awaiting_answer"); input.placeholder = "Choose an option above, or type your answer here"; if (!state.replaying) input.focus(); break;
     case "answer": if (state.question?.question_id === msg.question_id) { state.question = null; input.placeholder = "What would you like to make?"; } state.pending = false; updatePhase("planning"); break;
     case "phase": state.completed = msg.completed_steps; state.phase = msg.phase; if (msg.phase !== "idle") updatePhase(msg.phase); break;
@@ -722,7 +724,7 @@ function modelRow(model, active, index) {
   const line2 = document.createElement('div'); line2.className = 'span-2'; line2.append(url);
   const line3 = document.createElement('div'); line3.className = 'span-2'; line3.append(key, remove);
   const limits = document.createElement('div'); limits.className = 'span-2';
-  for (const [field, label] of [['context_window', 'Context window (tokens, auto if empty)'], ['thinking_token_budget', 'Thinking budget (tokens, optional)']]) {
+  for (const [field, label] of [['context_window', 'Context window (tokens, auto if empty)'], ['thinking_token_budget', 'Thinking budget (tokens, optional)'], ['max_images_per_request', 'Images per request (endpoint limit; default 16)']]) {
     const input = document.createElement('input'); input.type = 'number'; input.min = field === 'context_window' ? '4096' : '1';
     input.placeholder = label; input.title = label; input.setAttribute('aria-label', label); input.dataset.field = field; input.value = model[field] || ''; limits.append(input);
   }
@@ -867,6 +869,11 @@ applyAppearance(['dark', 'light'].includes(savedTheme) ? savedTheme : 'dark');
 $('btn-theme').onclick = () => applyAppearance(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 
 /* ---------------- composer toolbar: model, effort, context window ---------------- */
+function renderImageContext(usage) {
+  const notice = $('image-context-notice');
+  notice.hidden = !usage?.reference_omitted;
+  notice.textContent = usage?.reference_omitted ? `Viewing ${usage.reference_total - usage.reference_omitted} of ${usage.reference_total} reference images in this request. The assistant can open the rest in batches; all originals remain saved.` : '';
+}
 function renderContextUsage(usage) {
   const ring = $('context-ring'), arc = $('context-arc'), tip = $('context-tip'); if (!ring) return;
   const used = (usage?.prompt_tokens || 0) + (usage?.completion_tokens || 0);

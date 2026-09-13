@@ -14,22 +14,24 @@ import uuid
 from collections import Counter
 from pathlib import Path
 
-from .attachments import image_part, image_path
+from .attachments import image_part, image_path, saved_image_ids
 from .operations import OPERATION_SYSTEM, TOOL_DEFINITIONS, compile_workspace, migrate, workspace
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def pi_image(path):
+def pi_image(path, **metadata):
     uri = image_part(path)['image_url']['url']
     header, data = uri.split(',', 1)
-    return {'type': 'image', 'mimeType': header[5:].split(';')[0], 'data': data}
+    return {'type': 'image', 'mimeType': header[5:].split(';')[0], 'data': data,
+            **({'cadpilotImage': metadata} if metadata else {})}
 
 
 def model_config(runner):
     planner, agent = runner.config['planner'], runner.config['agent']
     return {'baseUrl': planner['base_url'].rstrip('/'), 'id': planner['model'], 'apiKey': planner.get('api_key', ''),
             'contextWindow': planner.get('max_model_len') or agent.get('max_model_len') or 32768,
+            'maxImagesPerRequest': planner.get('max_images_per_request') or 16,
             'thinking': agent.get('model_thinking', True) and agent.get('native_reasoning_effort') != 'off',
             'effort': agent.get('native_reasoning_effort', 'medium'),
             'thinkingBudget': agent.get('native_thinking_token_budget'),
@@ -187,7 +189,7 @@ class PiBridge:
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
             tools=definitions, activeTools=self.active_tools,
-            systemPrompt=OPERATION_SYSTEM + '\nUse inspect to read the existing project before working. Reference images have IDs; view_image can reread them after compaction.\n')
+            systemPrompt=OPERATION_SYSTEM + '\nUse inspect to read the existing project before working. Images have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
         self.runner._pi_new_session = False
         self.runner.pi_session = {'id': result['sessionId'], 'file': result['sessionFile'], 'runtime': 'pi-coding-agent', 'version': '0.85.1'}
         consumed = set(result.get('consumed', []))
@@ -237,6 +239,9 @@ class PiBridge:
                     self.runner.context_usage = {'prompt_tokens': usage.get('tokens'), 'completion_tokens': 0,
                                                   'max_context': usage['contextWindow'], 'runtime': 'pi'}
                     self.runner.emit({'t': 'context_usage', **self.runner.context_usage, 'timeline': False})
+                elif kind == 'image_context':
+                    self.runner.image_context = {k: v for k, v in message.items() if k != 'type'}
+                    self.runner.emit({'t': 'image_context', **self.runner.image_context, 'timeline': False})
                 elif kind == 'idle':
                     self.idle = True
                     self.activity.set()
@@ -327,14 +332,18 @@ class PiBridge:
                 'research': runner.research, 'library_facts': runner.library_facts,
                 'web_search_enabled': runner.web_enabled,
                 'selection': runner._selection_context(ctx['geometry'], ctx['state']),
-                'references': [{k: v for k, v in image.items() if k != 'path'} for image in runner.attachments + runner.pending_images]}
+                'references': [{k: v for k, v in image.items() if k != 'path'} for image in runner.attachments + runner.pending_images],
+                'image_archive': saved_image_ids(ctx['project'].path),
+                'saved_views': [{'revision': revision['id'], 'images': [f"cad:{revision['id']}:{view}" for view in ('iso', 'top', 'front', 'right')
+                                if f'view-{view}.png' in revision['sha256']]} for revision in ctx['project'].read()['revisions']]}
 
     def views(self):
         content = []
         if self.ctx['expected_head']:
             for view in ('iso', 'top', 'front'):
                 try:
-                    image = pi_image(self.ctx['project'].file(self.ctx['expected_head'], f'view-{view}.png'))
+                    image = pi_image(self.ctx['project'].file(self.ctx['expected_head'], f'view-{view}.png'),
+                                     id=f"cad:{self.ctx['expected_head']}:{view}", kind='cad', revision=self.ctx['expected_head'], view=view)
                     content += [{'type': 'text', 'text': f"CAD view {view}, revision {self.ctx['expected_head']}"}, image]
                 except (OSError, ValueError):
                     continue
@@ -363,11 +372,12 @@ class PiBridge:
                 content = [{'type': 'text', 'text': json.dumps(outcome['result'])}]
                 if ctx['expected_head'] != head:
                     content += self.views()
-                for item in runner.pending_images + runner.attachments:
+                for item in {i['id']: i for i in runner.attachments + runner.pending_images}.values():
                     if item['id'] not in previous or message['name'] == 'view_image':
                         if message['name'] == 'view_image' and item['id'] != outcome['result'].get('id'):
                             continue
-                        content += [{'type': 'text', 'text': item['label'] + ' (id: ' + item['id'] + ')'}, pi_image(item['path'])]
+                        content += [{'type': 'text', 'text': item['label'] + ' (id: ' + item['id'] + ')'},
+                                    pi_image(item['path'], id=item['id'], kind='inspection' if message['name'] == 'view_image' else 'research')]
                 runner._save_conversation()
         except asyncio.CancelledError:
             content, failed = [{'type': 'text', 'text': 'Tool cancelled. Inspect the current revision before resuming.'}], True
@@ -438,7 +448,7 @@ async def run_pi(runner, intent, *, persistent=False):
                         bridge.model = current_model
                     text, images = item['content'], []
                     for name in item.get('attachments', []):
-                        images.append(pi_image(image_path(project.path, name)))
+                        images.append(pi_image(image_path(project.path, name), id=name, kind='reference'))
                         text += '\nReference image: ' + name
                     if runner._last_selection:
                         text += '\nSelected CAD geometry: ' + json.dumps(runner._selection_context(ctx['geometry'], ctx['state']))

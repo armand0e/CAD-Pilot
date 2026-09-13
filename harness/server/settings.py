@@ -30,7 +30,8 @@ def default_settings(config):
                                  config.get('agent', {}).get('native_reasoning_effort') or planner.get('reasoning_effort') or 'medium'),
             'active_model': planner.get('model', 'default'),
             'models': [{'name': planner.get('model', 'default'), 'base_url': planner.get('base_url', ''), 'model': planner.get('model', ''),
-                        'api_key': '', 'context_window': planner.get('max_model_len'), 'thinking_token_budget': config.get('agent', {}).get('native_thinking_token_budget')}]}
+                        'api_key': '', 'context_window': planner.get('max_model_len'), 'max_images_per_request': planner.get('max_images_per_request', 16),
+                        'thinking_token_budget': config.get('agent', {}).get('native_thinking_token_budget')}]}
 
 
 def load(config):
@@ -69,8 +70,12 @@ def validate(data, previous):
         window = item.get('context_window')
         if window not in (None, '') and (type(window) is not int or window < 4096):
             raise ValueError(f'{name}: context_window must be an integer of at least 4096 tokens, or empty for automatic detection')
+        images = item.get('max_images_per_request')
+        if images not in (None, '') and (type(images) is not int or images < 1):
+            raise ValueError(f'{name}: max_images_per_request must be a positive integer, or empty to use 16')
         models.append({'name': name, 'base_url': base_url.rstrip('/'), 'model': model, 'api_key': key,
-                       'thinking_token_budget': int(budget) if budget not in (None, '') else None, 'context_window': window or None})
+                       'thinking_token_budget': int(budget) if budget not in (None, '') else None, 'context_window': window or None,
+                       'max_images_per_request': images if images not in (None, '') else 16})
     if not models:
         raise ValueError('configure at least one model')
     if len({m['name'] for m in models}) != len(models):
@@ -104,6 +109,7 @@ def apply(config, settings):
         planner.pop('structured_output_whitespace_pattern', None)
         planner.pop('vendor_extensions', None)
     planner.update(base_url=active['base_url'], model=active['model'], api_key=active['api_key'], reasoning_effort=settings['reasoning_effort'])
+    planner['max_images_per_request'] = active.get('max_images_per_request') or 16
     planner.pop('max_model_len', None)
     if active.get('context_window'):
         planner['max_model_len'] = active['context_window']

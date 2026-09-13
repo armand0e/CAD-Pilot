@@ -245,6 +245,7 @@ class AgentRunner:
         self.design_brief = None
         self.agent_history = []
         self.context_usage = None
+        self.image_context = None
         self.library_facts = []
         self.pending_images = []
         self.attachments = []
@@ -384,7 +385,7 @@ class AgentRunner:
                 "max_steps": int(self.config["agent"].get("max_steps", 40)),
                 "started_at": self.started_at, "pause_reason": self._pause_reason, "pending_question": self._question, "context_usage": self.context_usage,
                 "can_continue": bool(self.task_text), "journal_warning": self.journal.failed if self.journal else None,
-                "web_enabled": self.web_enabled, "chat_protocol": 1,
+                "web_enabled": self.web_enabled, "chat_protocol": 1, "image_context": self.image_context,
                 "persistence_warning": self._transcript_warning,
                 "events": list(self.events),
                 "transcript": transcript}
@@ -410,18 +411,21 @@ class AgentRunner:
             except OSError as error:
                 self.emit({'t': 'note', 'message': 'Conversation could not be saved: ' + str(error)})
 
-    def _accept_attachments(self, attachments):
+    def _accept_attachments(self, attachments, *, replace=False):
         project = getattr(self.session, 'project', None)
         accepted = []
-        for item in (attachments or [])[:4]:
+        if attachments is not None and (not isinstance(attachments, list) or any(not isinstance(item, str) for item in attachments)):
+            raise ValueError('Attachments must be a list of image IDs')
+        for item in dict.fromkeys(attachments or []):
             try:
                 path = image_path(project.path, item) if project else None
-            except ValueError:
-                path = None
-            if path:
-                accepted.append({'id': item, 'path': str(path), 'label': 'User reference ' + item})
-        if accepted:
-            self.attachments = list({item['id']: item for item in self.attachments + accepted}.values())
+            except (OSError, ValueError) as error:
+                raise ValueError(f'Reference image {item} is unavailable: {error}') from error
+            if path is None:
+                raise ValueError('Open a CAD project before attaching images')
+            accepted.append({'id': item, 'path': str(path), 'label': 'User reference ' + item})
+        if accepted or replace:
+            self.attachments = list({item['id']: item for item in ([] if replace else self.attachments) + accepted}.values())
         self._last_selection = None
         state = read_native_state(getattr(self.session, 'state_dir', None))
         if state and state.get('selection'):
@@ -435,9 +439,9 @@ class AgentRunner:
             raise RuntimeError("agent already running")
         if not isinstance(task_text, str) or not 0 < len(task_text.strip()) <= 8000 or mode not in {"auto", "manual"}:
             raise ValueError("Provide a task and choose Auto or Manual mode")
+        accepted = self._accept_attachments(attachments, replace=new_task)
         if new_task:
-            self.attachments = []
-        accepted = self._accept_attachments(attachments)
+            self.image_context = None
         if accepted:
             task_text += f" [{len(accepted)} image attachment(s)]"
         self._intents = asyncio.Queue()
