@@ -403,7 +403,13 @@ class PiBridge:
             elif message['name'] == 'submit_research' and getattr(runner, 'research_profile', False):
                 content = [{'type': 'text', 'text': json.dumps(submit(runner, message['arguments']))}]
             elif message['name'] == 'research_dimensions':
+                identity = self.streams.get(message['id'], {'operation_id': message['id'], 'turn_id': runner.turn_id})
+                runner.emit({'t': 'research_start', **identity, 'operation': 'research_dimensions',
+                             'query': message['arguments'].get('part_identity', 'Dimensions'), 'call': 1})
                 result = await investigate(runner, message['arguments'])
+                runner.emit({'t': 'research_result', **identity, 'operation': 'research_dimensions',
+                             'sources': result['sources'], 'investigation_url': result['transcript_url'],
+                             'summary': result['summary']})
                 content = [{'type': 'text', 'text': json.dumps(result)}]
             elif message['name'] in WORKSPACE_NAMES + ['__workspace']:
                 result = await dispatch(self, message['name'], message['arguments'])

@@ -72,6 +72,9 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue((tasks[0]/'dimension-report.json').exists())
         self.assertIn('PRIVATE_FULL_INVESTIGATION',''.join(p.read_text() for p in (tasks[0]/'pi/sessions').glob('*.jsonl')))
         self.assertIn('65 mm',self.runner.research['notes']['facts'][0]['statement'])
+        displayed=[e for e in self.runner.transcript.read() if e['t']=='research_result']
+        self.assertEqual(displayed[-1]['sources'][0]['id'],'web_fixture')
+        self.assertNotIn('PRIVATE_FULL_INVESTIGATION',str(displayed))
         from fastapi.testclient import TestClient
         from server.app import app
         with patch('server.app._project',return_value=self.project):
