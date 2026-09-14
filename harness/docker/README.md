@@ -232,8 +232,12 @@ There is no custom native context compactor or secondary native agent loop.
   old unscoped claims are preserved but displayed as needing verification.
 - User-input evidence uses an indexed, incremental transcript reader. Older
   transcript databases migrate in place while preserving every UI event.
-- The assistant sidebar shows the dimension researcher's actual activity, elapsed
-  time, source links and outcome. These compact UI events survive reconnects;
+- Each research call has its own card in the chat showing actual activity, elapsed
+  time and search/read counts. It opens on an activity trail and the dimensions
+  being investigated, with Sources and Findings tabs for links, outcomes and
+  unresolved questions. Cards stay at their invocation through steering and
+  reconnects; repeated progress preserves the selected tab and disclosure state.
+  These compact UI events survive reconnects;
   child reasoning and complete source pages remain in the separate investigation.
 
 `harness/pi/setup.sh` installs the pinned packages for native development. Docker uses

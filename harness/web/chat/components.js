@@ -1,5 +1,6 @@
 import {safeURL} from './state.js';
 import {ThinkingContent} from './thinking.js';
+import {ResearchCard} from '../research-agents.js';
 
 export function element(tag, className='', text='') {
   const el=document.createElement(tag); if(className) el.className=className; if(text) el.textContent=text; return el;
@@ -203,6 +204,8 @@ export class ActivityTimeline {
   }
   update(operations,replaying=false) {
     this.operations=operations;
+    const ids=new Set(operations.map(op=>op.id));
+    for(const [id,entry] of this.entries)if(!ids.has(id)){entry.el.remove();this.entries.delete(id);}
     for(const op of operations){let entry=this.entries.get(op.id);if(!entry){entry=new TimelineEntry(op,this.getSource,replaying);this.entries.set(op.id,entry);this.list.append(entry.el);}else entry.update(op,replaying);}
     this.layout();
   }
@@ -365,25 +368,41 @@ export class AssistantTurn {
   update(turn,replaying) {
     if(this.user.textContent!==turn.user)this.user.textContent=turn.user;
     this.user.hidden=!turn.user;this.el.dataset.status=turn.status;
+    const ordered=[];
     let group=[];const renderGroup=()=>{
       if(!group.length)return;const id=`group:${group[0].id}`;let timeline=this.components.get(id);
       if(!timeline){timeline=new ActivityTimeline(this.getSource);this.components.set(id,timeline);this.content.append(timeline.el);}
-      timeline.update(group,replaying);group=[];
+      timeline.update(group,replaying);ordered.push(timeline.el);group=[];
     };
     for(const segment of turn.segments) {
+      if(segment.kind==='research_agent') {
+        renderGroup();let card=this.components.get(segment.id);
+        if(!card){card=new ResearchCard();this.components.set(segment.id,card);}
+        card.update({...segment.research,steps:segment.researchSteps,status:segment.status,started_at:segment.research?.started_at || segment.startedAt,
+          finished_at:segment.research?.finished_at || segment.finishedAt,
+          ...(['interrupted','cancelled','failed'].includes(segment.status)?{activity:({interrupted:'Research was interrupted',cancelled:'Research stopped',failed:'Research failed'})[segment.status]}:{})});
+        card.el.dataset.operationId=segment.id;ordered.push(card.el);continue;
+      }
       if(segment.kind==='question'){
         renderGroup();let card=this.components.get(segment.id);
         if(!card){card=new QuestionCard(segment,(id,selected,text)=>window.cadpilotAnswer?.(id,selected,text));this.components.set(segment.id,card);this.content.append(card.el);}
-        card.update(segment);continue;
+        card.update(segment);ordered.push(card.el);continue;
       }
       if(segment.kind!=='answer'){group.push(segment);continue;}
       renderGroup();let answer=this.components.get(segment.id);
       if(!answer){answer=new StreamingAnswer(this.getSource);this.components.set(segment.id,answer);this.content.append(answer.el);}
-      answer.update(segment,replaying);
+      answer.update(segment,replaying);ordered.push(answer.el);
     }
     renderGroup();
+    // A drafted tool row can become a research card after its arguments arrive.
+    // Reconcile its position without replacing surrounding answers/disclosures.
+    let cursor=this.content.firstChild;
+    for(const node of ordered){if(node===cursor)cursor=cursor.nextSibling;else this.content.insertBefore(node,cursor);}
+    for(const [id,component] of this.components)if(!ordered.includes(component.el)){component.el.remove();this.components.delete(id);}
     this.footer.textContent=turn.status==='running'?'':turn.status==='completed'?'Response complete':turn.status==='paused'?'Waiting for your guidance':turn.status==='failed'?'Needs attention · '+(turn.reason || ''):turn.status==='interrupted'?(turn.interruption==='guidance'?'Updated with your guidance':'Interrupted · '+(turn.reason || 'previous work is preserved')):'Stopped · your work is preserved';
     this.footer.hidden=!this.footer.textContent;
     this.footer.title=turn.reason || '';
   }
+  connection(connected){for(const component of this.components.values())component.connection?.(connected);}
+  tick(){for(const component of this.components.values())component.tick?.();}
 }

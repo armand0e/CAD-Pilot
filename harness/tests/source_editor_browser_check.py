@@ -72,21 +72,34 @@ def main():
         sockets[-1].send(json.dumps({'t':'control','locked':True,'mode':'auto'}))
         expect(page.locator('#workspace-content')).not_to_be_editable()
         expect(page.locator('#workspace-build')).to_be_disabled()
-        research={'t':'research_agent','agent_id':'research-1','task':'Raspberry Pi 5 · mounting dimensions',
+        def chat(kind, **fields):
+            sockets[-1].send(json.dumps({'t':kind,'turn_id':'research-turn','ts':time.time(),**fields}))
+        chat('user',text='Find the Raspberry Pi 5 mounting dimensions.')
+        chat('assistant',message='I’ll ask the dimension researcher to check the official drawing.')
+        chat('tool_input_start',operation_id='research-call')
+        chat('tool_input_done',operation_id='research-call',tool='research_dimensions',arguments={'part_identity':'Raspberry Pi 5'})
+        chat('research_start',operation_id='research-call',operation='research_dimensions',query='Raspberry Pi 5')
+        research={'t':'research_agent','agent_id':'research-1','turn_id':'research-turn','task':'Raspberry Pi 5 · mounting dimensions',
                   'status':'running','activity':'Reading a source','detail':'Official mechanical drawing',
                   'started_at':time.time()-62,'ts':time.time(),'searches':2,'pages_read':1,
                   'dimensions':['Board outline','Mounting-hole positions'],
                   'sources':[{'id':'official','title':'Raspberry Pi mechanical drawing','url':'https://www.raspberrypi.com/documentation/','kind':'pdf'},
                              {'id':'unsafe','title':'Unsafe link','url':'javascript:alert(1)','kind':'page'}]}
         sockets[-1].send(json.dumps(research))
-        card=page.locator('.research-agent')
+        card=page.locator('#chat .research-agent')
         expect(card).to_be_visible();expect(card.locator('.research-agent-badge')).to_have_text('Running')
+        expect(page.locator('#research-agents')).to_have_count(0)
+        expect(page.locator('[data-operation-id="research-call"]')).to_have_count(1)
+        assert card.evaluate('(el)=>el.previousElementSibling.classList.contains("streaming-answer") || !!el.previousElementSibling.querySelector(".answer-body")')
         expect(card.locator('.research-agent-elapsed')).to_have_text(re.compile('1:[0-5][0-9]'))
-        card.locator('summary').click()
+        expect(card).to_have_attribute('open','')
         expect(card.locator('a')).to_have_count(1)
         expect(card.locator('.research-agent-counts')).to_contain_text('1 page read')
         expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
-        page.screenshot(path='/tmp/cad-research-sidebar.png')
+        page.screenshot(path='/tmp/cad-research-in-chat.png')
+        card.get_by_role('tab',name='Sources (1)',exact=True).click()
+        expect(card.get_by_role('link',name='Raspberry Pi mechanical drawing')).to_be_visible()
+        page.screenshot(path='/tmp/cad-research-sources-in-chat.png')
         hold_reconnect[0]=True
         previous=len(sockets);sockets[-1].close(code=1001,reason='Fixture connection drop')
         expect(card.locator('.research-agent-badge')).to_have_text('Reconnecting')
@@ -111,7 +124,7 @@ def main():
         assert page.locator('.research-agent').bounding_box()['width']<=390
         assert not errors,errors
         browser.close()
-        print('PASS: source editor, independent chat draft, research sidebar progress, sources, reconnect, completion/cancellation/failure and mobile layout')
+        print('PASS: source editor, independent chat draft, inline research progress, sources, reconnect, completion/cancellation/failure and mobile layout')
 
 
 if __name__=='__main__':main()

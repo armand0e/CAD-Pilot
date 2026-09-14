@@ -1,7 +1,6 @@
 import {ChatPanel} from './chat/panel.js';
 import {icon} from './chat/components.js';
 import { WorkspaceEditor } from './workspace-editor.js';
-import { ResearchAgents } from './research-agents.js';
 
 // CADPilot frontend — session tabs, resilient streams, agent timeline, action overlay.
 
@@ -19,7 +18,6 @@ const state = {
 };
 const emptyChat = $("chat").innerHTML;
 const chatPanel = new ChatPanel($('chat'), $('jump-latest'), $('chat-announcer'));
-const researchAgents = new ResearchAgents($('research-agents'));
 const escapeHTML = (text) => String(text).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function syncControls() {
   const typed = !!$("composer-input").value.trim();
@@ -49,7 +47,7 @@ function syncControls() {
   workspaceEditor.sync();
 }
 function connectionStatus() {
-  researchAgents.connection(state.agentConnected);
+  chatPanel.connection(state.agentConnected);
   const el = $("connection-status");
   const connected = state.agentConnected && state.viewConnected;
   el.textContent = !state.session ? "Ready to start" : connected ? "Live" : "Reconnecting…";
@@ -58,7 +56,6 @@ function connectionStatus() {
 }
 function resetChat() {
   chatPanel.reset();
-  researchAgents.reset();
   $("chat").innerHTML = emptyChat;
   state.lastEvent = 0;
   state.webSources = {}; state.researchCalls = 0; state.nativeOperation = false; state.nativeAttempt = 0;
@@ -552,7 +549,7 @@ function handleAgentEvent(msg) {
   if (msg.t === "snapshot") {
     // Reconcile by identity. Do not reset mounted turns, disclosures, selections,
     // or scroll position when a transport reconnects.
-    chatPanel.replay(msg.transcript || msg.events || [], msg.active);
+    chatPanel.replay(msg.transcript || msg.events || [], msg.active,msg.research_agents || []);
     state.replaying = true; state.lastEvent = 0;
     try { for (const event of msg.events || []) updateAgentControls(event); }
     finally { state.replaying = false; }
@@ -561,7 +558,6 @@ function handleAgentEvent(msg) {
     state.startedAt = msg.started_at; state.phase = msg.phase;
     state.canContinue = msg.can_continue ?? !!msg.task;
     state.agentConnected = true; state.pending = false;
-    researchAgents.restore(msg.research_agents || (msg.transcript || msg.events || []).filter(e=>e.t==='research_agent'), true);
     state.question = msg.pending_question || null;
     $('web-search-toggle').disabled = msg.chat_protocol !== 1;
     if (msg.context_usage) { state.contextUsage = msg.context_usage; renderContextUsage(msg.context_usage); }
@@ -580,7 +576,6 @@ function handleAgentEvent(msg) {
 function updateAgentControls(msg) {
   if (msg.id && msg.id <= state.lastEvent) return;
   if (msg.id) state.lastEvent = msg.id;
-  researchAgents.consume(msg);
   switch (msg.t) {
     case "user": state.pending = false; state.pendingText = ""; break;
     case "guidance": state.pending = false; updatePhase("steering"); break;

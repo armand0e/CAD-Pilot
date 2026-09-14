@@ -11,8 +11,8 @@
  * @typedef {{sourceId:string,turnId:string,operationId:string,evidence:'opened'|'discovered'}} SourceReference
  * @typedef {{id:string, user:string, startedAt:number, status:Status, segments:Array<Operation|Answer>}} AssistantTurn
  */
-export const createChatState = () => ({turns: [], byId: new Map(), sources: new Map(), aliases: new Map(), seen: new Set(), serial: 0, current: null});
-const terminal = s => ['completed', 'failed', 'cancelled', 'interrupted'].includes(s);
+export const createChatState = () => ({turns: [], byId: new Map(), sources: new Map(), aliases: new Map(), researchAgents: new Map(), seen: new Set(), serial: 0, current: null});
+const terminal = s => ['completed', 'incomplete', 'failed', 'cancelled', 'interrupted'].includes(s);
 const phases = {awaiting_answer:'Waiting for your answer', planning:'Thinking…', thinking:'Choosing desktop actions', modeling:'Designing the model', building:'Checking geometry and exports', verifying:'Checking the result', waiting_screen:'Waiting for CAD', recovering:'Reviewing the approach'};
 export const safeURL = value => {
   try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password ? u : null; } catch { return null; }
@@ -37,6 +37,12 @@ function finishThinking(turn, ts, status = 'completed') {
   for (const s of turn.segments) if (s.kind === 'thinking' && s.status === 'running') { s.status = status; s.finishedAt = ts; }
 }
 function segment(turn, id) { return turn.segments.find(s => s.id === id); }
+function researchStep(op, event) {
+  if(!event.activity)return;
+  const steps=op.researchSteps ||= [],previous=steps.at(-1);
+  if(previous?.activity===event.activity && previous.detail===(event.detail || ''))return;
+  steps.push({at:event.ts || event.finished_at || event.started_at || op.startedAt,activity:event.activity,detail:event.detail || ''});
+}
 function operation(turn, id, kind, event) {
   let op = segment(turn, id);
   if (!op) { op = {id, turnId:turn.id, kind, input:{}, status:'running', startedAt:event.ts, order:turn.segments.length}; turn.segments.push(op); }
@@ -54,10 +60,11 @@ function bindReferences(state, turn, answer) {
       operationId:source.operationId,evidence:source.opened?'opened':'discovered'};
   }
 }
-function settleTurn(turn, event, status) {
+function settleTurn(turn, event, status, steering=false) {
   turn.status = status; turn.finishedAt = event.ts;
   finishThinking(turn, event.ts, status === 'completed' ? 'completed' : status);
   for (const s of turn.segments) if (s.status === 'running' || s.status === 'preparing') {
+    if(steering && s.kind==='research_agent')continue; // Steering does not cancel a running child.
     s.status = status === 'completed' ? 'interrupted' : status; s.finishedAt = event.ts;
   }
 }
@@ -68,7 +75,7 @@ export function reduceChat(state, event) {
   // Also hide the canned resume acknowledgment in transcripts from older workers.
   if(event.t==='guidance' || (event.t==='assistant' && event.presentation==='status' &&
       event.message==='Continuing from the current document with your latest guidance.'))return false;
-  if(!['user','control','phase','thinking_start','thinking_delta','thinking_done','thinking_truncated','tool_input_start','tool_input_delta','tool_input_done','tool_settled','research_start','research_result',
+  if(!['user','control','phase','thinking_start','thinking_delta','thinking_done','thinking_truncated','tool_input_start','tool_input_delta','tool_input_done','tool_settled','research_start','research_result','research_agent',
     'research_error','research_cancelled','research_notes','intent','action','native_attempt','step_done','step_review',
     'tool_error','step_error','step_blocked','step_superseded','answer_start','answer_delta','answer_done','assistant',
     'pause','note','recovery','native_review','task_review','done','error','question','answer'].includes(event.t))return false;
@@ -77,11 +84,18 @@ export function reduceChat(state, event) {
   if (eventKey) state.seen.add(eventKey);
   const serial = ++state.serial;
   let turnId = event.turn_id || state.current || `legacy-turn:${eventKey || serial}`;
+  if(event.t==='research_agent') {
+    const owner=state.researchAgents.get(event.agent_id);
+    // Older workers stamp progress with the parent's current turn. Bind the
+    // child once to its actual invocation so steering cannot move its card.
+    const pending=!owner && [...state.turns].reverse().find(t=>t.segments.some(s=>s.kind==='research_agent' && !s.research?.agent_id && s.status==='running'));
+    turnId=owner?.turnId || pending?.id || turnId;
+  }
   if (event.t === 'user') {
     turnId = event.turn_id || `legacy-turn:${eventKey || serial}`;
     if (state.current && state.current !== turnId) {
       const previous = state.byId.get(state.current);
-      if (previous?.status === 'running') {settleTurn(previous, event, 'interrupted');previous.interruption='guidance';}
+      if (previous?.status === 'running') {settleTurn(previous, event, 'interrupted',true);previous.interruption='guidance';}
     }
     state.current = turnId;
   }
@@ -99,7 +113,7 @@ export function reduceChat(state, event) {
     case 'control': if (event.locked) { turn.status = 'running'; } else if (turn.status === 'running') settleTurn(turn,event,'interrupted'); break;
     case 'phase': {
       if(event.timeline===false)break; // Actual model request owns its activity row.
-      if (!phases[event.phase] || terminal(turn.status) || recent('cad') || recent('search') || recent('read') || turn.segments.some(s=>s.status==='preparing')) break;
+      if (!phases[event.phase] || terminal(turn.status) || recent('cad') || recent('search') || recent('read') || recent('research_agent') || turn.segments.some(s=>s.status==='preparing')) break;
       const previous = recent('thinking');
       if (previous?.phase === event.phase) break;
       finishThinking(turn,event.ts);
@@ -151,14 +165,42 @@ export function reduceChat(state, event) {
     }
     case 'research_start': {
       finishThinking(turn,event.ts);
-      const kind = event.operation === 'read' || /^https?:/.test(event.query) ? 'read' : 'search';
+      const kind = event.operation==='research_dimensions' ? 'research_agent' : event.operation === 'read' || /^https?:/.test(event.query) ? 'read' : 'search';
       const op=operation(turn,event.operation_id || `web:${id}`,kind,event);
       if(terminal(op.status))break;
-      Object.assign(op, {kind,status:'running',executingAt:event.ts,input:{query:event.query,focus:event.focus},label:event.query}); break;
+      const researchArgs=op.input.arguments;
+      Object.assign(op, {kind,status:'running',executingAt:event.ts,input:{query:event.query,focus:event.focus},label:event.query});
+      if(kind==='research_agent'){
+        op.research={task:event.query,dimensions:researchArgs?.dimensions || [],started_at:event.ts,activity:'Starting research'};
+        researchStep(op,op.research);
+      }
+      break;
+    }
+    case 'research_agent': {
+      finishThinking(turn,event.ts);
+      const owner=state.researchAgents.get(event.agent_id);
+      const op=(owner && segment(turn,owner.operationId)) || turn.segments.find(s=>s.kind==='research_agent' && !s.research?.agent_id && s.status==='running') || operation(turn,`research:${event.agent_id}`,'research_agent',event);
+      state.researchAgents.set(event.agent_id,{turnId:turn.id,operationId:op.id});
+      if(terminal(op.status) && (event.status==='running' || (op.status!=='completed' && event.status==='completed')))break;
+      if(op.research?.ts>event.ts)break;
+      Object.assign(op,{kind:'research_agent',status:event.status,research:{...op.research,...event},finishedAt:event.finished_at});
+      researchStep(op,event);
+      for(const source of event.sources || [])rememberSource(state,{...source,operationId:op.id});
+      break;
     }
     case 'research_result': case 'research_error': case 'research_cancelled': {
       let op = event.operation_id ? segment(turn,event.operation_id) : [...turn.segments].reverse().find(s => ['search','read'].includes(s.kind) && s.status === 'running');
       if (!op) op = operation(turn,event.operation_id || `web:${id}`,event.operation === 'read' ? 'read' : 'search',event);
+      if(op.kind==='research_agent') {
+        for(const source of event.sources || [])rememberSource(state,{...source,operationId:op.id});
+        if(!terminal(op.status)) {
+          op.status=event.t==='research_result'?'completed':event.t==='research_error'?'failed':'cancelled';op.finishedAt=event.ts;
+          op.research={...op.research,summary:event.summary || event.message || '',sources:event.sources || op.research?.sources || [],
+            activity:op.status==='completed'?'Research complete':op.status==='failed'?'Research failed':'Research stopped'};
+          researchStep(op,{...op.research,ts:event.ts,detail:''});
+        }
+        break;
+      }
       if (op.status==='interrupted' && event.t==='research_cancelled')op.status='running';
       if (terminal(op.status)) break;
       op.status = event.t === 'research_result' ? 'completed' : event.t === 'research_error' ? 'failed' : 'cancelled';
