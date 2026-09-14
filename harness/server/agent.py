@@ -622,7 +622,10 @@ class AgentRunner:
         summary = '; '.join(selected + ([text] if text else []))
         answer = {'question_id': question_id, 'selected': selected, 'text': text, 'summary': summary,
                   'attachments': [a['id'] for a in accepted]}
-        self.emit({'t': 'answer', **answer})
+        event_id = uuid.uuid4().hex
+        self.emit({'t': 'answer', 'event_id': event_id, **answer})
+        # The answer is user input evidence; the model cites this ID in spec rows it decides.
+        answer['evidence_id'] = 'input:' + event_id
         self.user_messages.append(summary)
         self._clarification_reviewed = False
         self._save_conversation()
@@ -1337,17 +1340,28 @@ class AgentRunner:
         project = getattr(self.session, 'project', None)
         if not project:
             raise ValueError('No native project is open')
+        from .projects import reference_name
         if url_or_name.startswith(('http://', 'https://')):
-            name = os.path.basename(urlsplit(url_or_name).path) or 'reference.step'
-            if not name.lower().endswith(('.step', '.stp', '.stl')):
-                raise ValueError('Only .step/.stp/.stl URLs can be imported as reference models')
-            _, content_type, body = await self._inference(fetch_public(url_or_name, max_bytes=40 * 1024 * 1024))
+            final_url, content_type, body = await self._inference(fetch_public(url_or_name, max_bytes=40 * 1024 * 1024))
+            try:
+                name = reference_name(url_or_name, final_url, body)
+            except ValueError as error:
+                raise ValueError(f'{error} (the server sent {content_type or "an unknown type"})') from None
             stored = project.add_reference(name, body)
         else:
             stored = os.path.basename(url_or_name)
             project.reference_path(stored)
-        return {'tool': 'import_reference', 'ok': True, 'file': stored, 'references': project.references(),
-                'next': f'Use place_reference(id, file="{stored}", at=[x,y,z]) to put it in the model; geometry.references then reports clearance/interference per part.'}
+        source = 'The file is /work/references/' + stored + ' in the source workspace: '
+        if stored.lower().endswith(('.step', '.stp', '.stl')):
+            usage = source + ('Part.Shape().read(path) opens STEP' if not stored.lower().endswith('.stl') else 'Mesh.Mesh(path) opens STL') + \
+                    f'; typed projects use place_reference(id, file="{stored}", at=[x,y,z]) and geometry.references then reports clearance per part.'
+        elif stored.lower().endswith('.dxf'):
+            usage = source + 'import importDXF; importDXF.insert(path, doc.Name) adds its entities (circles give exact hole centres and radii; edges give the outline).'
+        elif stored.lower().endswith('.svg'):
+            usage = source + 'import importSVG; importSVG.insert(path, doc.Name) adds its paths as wires.'
+        else:
+            usage = source + 'Part.Shape().read(path) opens IGES.'
+        return {'tool': 'import_reference', 'ok': True, 'file': stored, 'references': project.references(), 'next': usage}
 
     def _model_context(self):
         project = getattr(self.session, 'project', None)
@@ -1476,7 +1490,9 @@ class AgentRunner:
                     return {'result': clarification, 'failed': False, 'free': True}
                 settle('completed', 'Question sent to the user; waiting for the answer.')
                 answer = await self._await_answer(question if self._pi_bridge is not None else question + self._grounding_caveat(question), args.get('options'), args.get('multi_select', False))
-                return {'result': {'ok': True, 'question': question, 'answer': answer}, 'failed': False, 'free': True}
+                return {'result': {'ok': True, 'question': question, 'answer': answer,
+                                   'hint': 'answer.evidence_id is the user input ID to cite in spec rows this answer decides (origin user).'},
+                        'failed': False, 'free': True}
             if name == 'research':
                 feedback = await self._research_step(args['query_or_url'], args['focus'], identity=identity,
                                                      part=args.get('part') or None, pages=args.get('pages') or None)

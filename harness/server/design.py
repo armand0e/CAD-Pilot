@@ -18,7 +18,8 @@ BOOLEAN_KINDS = {"union", "difference", "intersection", "parts"}
 KINDS = PRIMITIVE_KINDS | PROFILE_KINDS | TRANSFORM_KINDS | BOOLEAN_KINDS | {"reference"}
 EDGE_RULES = ("all", "vertical", "horizontal", "top", "bottom", "outer_vertical")
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-REFERENCE_FILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\.(step|stp|stl)\Z", re.IGNORECASE)
+REFERENCE_FILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\.(step|stp|stl|dxf|svg|iges|igs)\Z", re.IGNORECASE)
+PLACEABLE_REFERENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\.(step|stp|stl)\Z", re.IGNORECASE)  # typed place_reference
 
 
 def geometry_signature(design):
@@ -186,8 +187,8 @@ def validate_design(value, *, allow_unused=False):
             if options.get('axis') not in ('x', 'y', 'z'):
                 raise ValueError(f'{name}: rotate axis must be x, y or z')
         elif kind == 'reference':
-            if not isinstance(options.get('file'), str) or not REFERENCE_FILE.fullmatch(options['file']):
-                raise ValueError(f'{name}: reference file must be a plain .step/.stp/.stl file name')
+            if not isinstance(options.get('file'), str) or not PLACEABLE_REFERENCE.fullmatch(options['file']):
+                raise ValueError(f'{name}: reference file must be a plain .step/.stp/.stl file name (DXF/SVG references are imported from source code)')
             references.add(name)
         elif options:
             raise ValueError(f'{name}: {kind} takes no options')

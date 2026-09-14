@@ -53,8 +53,9 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(restored._image_parts(None)[0]), 1)
         self.assertIn(attached['id'], message_text([m for m in pi_messages(restored) if m['role'] == 'user'][1]))
         self.assertEqual(sum(p['type'] == 'image' for m in pi_messages(restored) if isinstance(m['content'], list) for p in m['content']), 1)
-        inspected = inspect_image(self.project.path, attached['id'], [2000, 0, 2500, 500])
-        self.assertEqual((inspected['original_width'], inspected['width']), (2500, 500))
+        # Crops are given in shown-image pixels (2000 wide here) and cut from the 2500-wide original.
+        inspected = inspect_image(self.project.path, attached['id'], [1600, 0, 2000, 400])
+        self.assertEqual((inspected['original_width'], inspected['width'], inspected['shown_width']), (2500, 500, 2000))
 
     async def test_new_task_resets_native_memory_and_old_references(self):
         self.runner.agent_history = [{'role': 'user', 'content': 'Old task'}]
@@ -93,7 +94,7 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         Image.new('RGB', (2400, 1200), 'blue').save(buffer, 'PNG')
         attached = store_image(self.project.path / 'attachments', buffer.getvalue())
         reply = AsyncMock(side_effect=[{'content': '', 'tool_calls': [{'id': 'crop', 'name': 'view_image',
-            'arguments': __import__('json').dumps({'id': attached['id'], 'crop': [2000, 0, 2400, 400]})}], 'finish_reason': 'tool_calls'},
+            'arguments': __import__('json').dumps({'id': attached['id'], 'crop': [1600, 0, 2000, 400]})}], 'finish_reason': 'tool_calls'},
             {'content': 'The crop is visible.', 'tool_calls': [], 'finish_reason': 'stop'}])
         with pi_model(self.runner, reply):
             self.runner.start('Inspect the corner of this drawing', 'auto', attachments=[attached['id']])
@@ -103,7 +104,7 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         pixels = next(p for p in result['content'] if p['type'] == 'image')
         import base64
         with Image.open(io.BytesIO(base64.b64decode(pixels['data']))) as image:
-            self.assertEqual(image.size, (400, 400))
+            self.assertEqual(image.size, (480, 480))  # 400 shown pixels of a 2400-wide original shown at 2000
         self.assertIn('image_url', str(self.runner.pi_test_requests[-1]['messages']))
 
     async def test_steering_keeps_completed_tool_results_and_reaches_pi(self):

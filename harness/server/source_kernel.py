@@ -26,6 +26,9 @@ def valid(shape):
 
 
 def mesh_for(shape):
+    # Lofted and spline surfaces can tessellate to zero-area triangles at seams; the
+    # audit tolerates those (they keep the mesh closed and add no volume) and still
+    # rejects open or inconsistently oriented meshes.
     return MeshPart.meshFromShape(Shape=shape.cleaned(), LinearDeflection=.03, AngularDeflection=.08, Relative=False)
 
 

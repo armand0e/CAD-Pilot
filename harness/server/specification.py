@@ -110,7 +110,13 @@ def check_verification(row, evidence, head, file):
         label = re.sub(r'\s*\(' + re.escape(head) + r'\)\s*$', '', label).strip()
         match = re.search(r'(?:^|\s)([A-Za-z_][A-Za-z0-9_]*(?::(?:Face|Edge)\d+)?)$', label)
         return match[1] if match else label
-    if features and not any(identity(f).split(':')[0] == s.split(':')[0] for f in features for s in subjects):
+    # Prose feature labels ("dome top", "six scallops") describe the design; only a
+    # feature that names a CAD identifier can point at the wrong body. Measuring the
+    # whole source result (CADPilotResult) covers every feature of the build.
+    cad_identifier = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?::(?:Face|Edge)\d+)?')
+    explicit = [f for f in features if cad_identifier.fullmatch(re.sub(r'\s*\(' + re.escape(head or '') + r'\)\s*$', '', f).strip())]
+    if explicit and subjects and subjects != {'CADPilotResult'} and \
+            not any(identity(f).split(':')[0] == s.split(':')[0] for f in explicit for s in subjects):
         raise ValueError('Link the requirement features to the body/face actually measured: ' + ', '.join(sorted(subjects)))
     return {'kind': kind, 'revision': head, 'field': field, 'actual': actual,
             'expected': expected, 'tolerance': tolerance, 'subjects': sorted(subjects),

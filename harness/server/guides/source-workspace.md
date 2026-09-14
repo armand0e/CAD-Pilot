@@ -45,8 +45,11 @@ retained. For analytic STEP and detailed face inspection prefer FreeCAD Python.
 
 bash runs in an isolated sandbox: /work is writable, the CAD runtime is read-only;
 there is no network, host home or other project access. python is the bundled
-FreeCAD Python. Use research/import_reference for external resources. Imported
-models are available under references/. Use bash for scripts or file inspection;
+FreeCAD Python. Read pages and PDFs with research; download STEP/STL/DXF/SVG/IGES
+files with import_reference. They appear under references/: Part.Shape().read(path)
+opens STEP/IGES, Mesh.Mesh(path) STL, importDXF.insert(path, doc.Name) adds DXF
+entities (circle edges give exact hole centres and radii) and importSVG.insert(path,
+doc.Name) adds SVG paths. Use bash for scripts or file inspection;
 cad_build is the operation that validates, saves and opens a model revision.
 
 ## Draw bodies with paths

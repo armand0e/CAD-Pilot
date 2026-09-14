@@ -330,7 +330,11 @@ class ContextAndQuestionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.runner.paused)
         kinds = [e['t'] for e in self.runner.events]
         self.assertIn('question', kinds); self.assertIn('answer', kinds); self.assertNotIn('pause', kinds)
-        self.assertEqual(tool_results(self.runner, 1)[-1]['answer']['selected'], ['3B+'])
+        answered = tool_results(self.runner, 1)[-1]['answer']
+        self.assertEqual(answered['selected'], ['3B+'])
+        # The model can cite the answer as user evidence without looking the ID up.
+        answer_event = next(e for e in self.runner.events if e['t'] == 'answer')
+        self.assertEqual(answered['evidence_id'], 'input:' + answer_event['event_id'])
         self.assertEqual(self.runner.dialogue.answered_questions()[-1]['answer'], '3B+')
         self.assertIsNone(self.runner.snapshot()['pending_question'])
 

@@ -35,6 +35,30 @@ class SearxngTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['provider'], 'searxng')
         self.assertEqual(result['warnings'][0]['code'], 'engine_unavailable')
 
+    async def test_an_empty_answer_from_rate_limited_engines_is_retried_once_and_explained(self):
+        calls = []
+        def handle(request):
+            calls.append(request)
+            if len(calls) == 1:
+                return httpx.Response(200, json={'results': [], 'unresponsive_engines': [['google cse', 'Too many requests'], ['brave', 'timeout']]})
+            return httpx.Response(200, json={'results': [{'url': 'https://example.com/drawing', 'title': 'Drawing', 'content': '58 x 49'}]})
+        tool = ResearchTool({'enabled': True, 'searxng_url': 'http://searxng:8080'})
+        with self.transport(handle), patch('server.searxng.asyncio.sleep') as sleep:
+            result = await tool.search('pi 4 mounting holes')
+        self.assertEqual(len(calls), 2)
+        sleep.assert_awaited_once()
+        self.assertEqual(result['sources'][0]['text'], '58 x 49')
+        calls.clear()
+        def exhausted(request):
+            calls.append(request)
+            return httpx.Response(200, json={'results': [], 'unresponsive_engines': [['google cse', 'Too many requests']]})
+        with self.transport(exhausted), patch('server.searxng.asyncio.sleep'):
+            with self.assertRaises(ResearchError) as caught:
+                await tool.search('pi 4 mounting holes')
+        self.assertEqual(len(calls), 2)
+        self.assertIn('google cse: Too many requests', str(caught.exception))
+        self.assertEqual(caught.exception.code, 'no_results')
+
     async def test_image_search_uses_images_category(self):
         requests = []
         def handle(request):

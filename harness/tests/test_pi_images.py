@@ -237,8 +237,11 @@ class ImageProjectionTests(unittest.TestCase):
             for name in ('cad:../..:top', 'cad:r0002:top', 'context:../../secret', 'cad:r0001:bottom'):
                 with self.assertRaises(ValueError):
                     image_path(project.path, name)
-            with self.assertRaisesRegex(ValueError, 'Crop must fit'):
-                inspect_image(project.path, 'cad:r0001:top', [0, 0, 81, 61])
+            # A slight overshoot is clamped to the picture; an empty or inverted crop is refused.
+            clamped = inspect_image(project.path, 'cad:r0001:top', [0, 0, 81, 61])
+            self.assertEqual(clamped['crop'], [0, 0, 80, 60])
+            with self.assertRaisesRegex(ValueError, 'Crop must be'):
+                inspect_image(project.path, 'cad:r0001:top', [50, 50, 40, 60])
             project.file('r0001', 'view-top.png').write_bytes(b'changed')
             with self.assertRaisesRegex(ValueError, 'integrity'):
                 image_path(project.path, 'cad:r0001:top')

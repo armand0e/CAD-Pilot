@@ -342,7 +342,7 @@ async def upload_attachment(session_id: str, file: UploadFile = File(...)):
     if len(content) > 40 * 1024 * 1024:
         raise HTTPException(413, 'File exceeds 40 MiB')
     try:
-        if name.lower().endswith(('.step', '.stp', '.stl')):
+        if name.lower().endswith(('.step', '.stp', '.stl', '.dxf', '.svg', '.iges', '.igs')):
             stored = await asyncio.to_thread(session.project.add_reference, name, content)
             return {'kind': 'reference', 'name': stored}
         from .attachments import store_image

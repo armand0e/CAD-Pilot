@@ -14,6 +14,47 @@ from pathlib import Path
 
 from .design import validate_design, scad_source
 
+REFERENCE_NAMES = 'Reference files are plain .step/.stp/.stl/.dxf/.svg/.iges names'
+
+
+def sniff_reference(content):
+    """The CAD file type of downloaded bytes (step, stl, dxf, svg, igs) or None for pages, PDFs and other data."""
+    head = content[:65536].lstrip()
+    if head.startswith(b'ISO-10303'):
+        return 'step'
+    if head.startswith(b'%PDF-') or head[:1] == b'<' and b'<svg' not in head:
+        return None
+    if b'<svg' in head:
+        return 'svg'
+    if re.match(rb'\s*0\s*\r?\n\s*SECTION', head) or (b'\nSECTION' in head[:4096] and b'\nHEADER' in head[:4096]):
+        return 'dxf'
+    if len(head) > 80 and head[72:73] == b'S' and head[:72].strip():
+        return 'igs'
+    if head.startswith(b'solid') and b'facet' in head:
+        return 'stl'
+    if len(content) >= 84 and not head.startswith(b'solid'):
+        import struct
+        triangles = struct.unpack('<I', content[80:84])[0]
+        if triangles and len(content) == 84 + 50 * triangles:
+            return 'stl'
+    return None
+
+
+def reference_name(requested_url, final_url, content):
+    """A workspace file name for a downloaded reference: the URL's own name when it has a CAD extension, else sniffed."""
+    from urllib.parse import urlsplit
+    from .design import REFERENCE_FILE
+    kind = sniff_reference(content)
+    if kind is None:
+        raise ValueError('The URL did not return a STEP, STL, DXF, SVG or IGES file; read pages and PDFs with research instead')
+    names = [os.path.basename(urlsplit(u).path) for u in (final_url, requested_url)]
+    for name in names:
+        if REFERENCE_FILE.fullmatch(name):
+            return name
+    # Without a CAD extension the requested URL's own name (a document number) beats a download handle.
+    stem = re.sub(r'[^A-Za-z0-9_.-]+', '-', (names[1] or names[0] or 'reference').rsplit('.', 1)[0]).strip('.-')[:60] or 'reference'
+    return f'{stem}.{kind}'
+
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('design.json', 'geometry.json', 'model.FCStd', 'model.scad', 'model.step', 'model.stl')
 OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'design-spec.json', 'parts.zip',
@@ -74,7 +115,7 @@ class Project:
     def reference_path(self, name):
         from .design import REFERENCE_FILE
         if not isinstance(name, str) or not REFERENCE_FILE.fullmatch(name):
-            raise ValueError('Reference files are plain .step/.stp/.stl names')
+            raise ValueError(REFERENCE_NAMES)
         path = self.path / REFERENCE_DIR / name
         if path.is_symlink() or not path.is_file():
             raise ValueError(f'Reference {name} is not in this project; import it first')
@@ -89,12 +130,15 @@ class Project:
     def add_reference(self, name, content):
         from .design import REFERENCE_FILE
         if not isinstance(name, str) or not REFERENCE_FILE.fullmatch(name):
-            raise ValueError('Reference files are plain .step/.stp/.stl names')
+            raise ValueError(REFERENCE_NAMES)
         if len(content) > 40 * 1024 * 1024:
             raise ValueError('Reference file exceeds 40 MiB')
-        head = content[:512].lstrip()
-        if name.lower().endswith(('.step', '.stp')) and not head.startswith(b'ISO-10303'):
+        extension = name.rsplit('.', 1)[1].lower()
+        kind = sniff_reference(content)
+        if extension in ('step', 'stp') and kind != 'step':
             raise ValueError('Not a STEP file (missing ISO-10303 header)')
+        if extension in ('dxf', 'svg') and kind != extension:
+            raise ValueError(f'Not a {extension.upper()} file')
         directory = self.path / REFERENCE_DIR
         directory.mkdir(exist_ok=True, mode=0o700)
         pending = directory / (name + '.pending')
@@ -214,13 +258,19 @@ class Project:
                 shutil.rmtree(stage)
 
 
-def build_error(log):
+def build_error(log, exit_code=None):
     """The kernel's own message, not its traceback; the full log stays in compiler.log."""
     lines = [line for line in log.strip().splitlines() if line.strip()]
     for line in reversed(lines):
         match = re.match(r'^(?:\w+\.)?(?:ValueError|TypeError|RuntimeError|Exception|Part\.OCCError|\w+Error): (.*)$', line)
         if match:
             return match.group(1)[:3000]
+    if exit_code is not None and (exit_code < 0 or exit_code > 128) and not lines:
+        signal_name = {-11: 'segmentation fault', 139: 'segmentation fault', -6: 'abort', 134: 'abort', -9: 'killed', 137: 'killed (out of memory?)'}.get(exit_code, f'exit code {exit_code}')
+        return (f'The CAD kernel process crashed ({signal_name}) while running the source, without a Python error. '
+                'Typical causes: a fillet or chamfer that cannot be built at that radius (especially on concave or short edges), '
+                'a boolean between invalid or coincident shapes, or an offset of a spline surface. Use a smaller radius, build the '
+                'profile with the arc drawn in (cad_paths), or a different construction order.')
     return ' '.join(lines[-3:])[-3000:] if lines else 'no compiler output'
 
 

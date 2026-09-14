@@ -116,11 +116,15 @@ class DocumentReader:
     async def read(self, url, focus='', part=None, pages=None, *, subject=''):
         """One view of a document: (result for the model, rendered images to attach)."""
         url = public_url(url)
-        if part is not None and (not isinstance(part, int) or isinstance(part, bool) or part < 1):
-            raise ResearchError('part must be a positive integer')
-        if pages is not None and (not isinstance(pages, list) or len(pages) != 2 or any(not isinstance(p, int) or isinstance(p, bool) or p < 1 for p in pages)
-                                  or pages[1] < pages[0] or pages[1] - pages[0] + 1 > MAX_RENDERED_PAGES):
-            raise ResearchError(f'pages must be [first, last] covering at most {MAX_RENDERED_PAGES} pages')
+        if part is not None and (not isinstance(part, int) or isinstance(part, bool) or part < 0):
+            raise ResearchError('part must be a positive integer (1-based)')
+        part = part or None
+        if pages is not None and (not isinstance(pages, list) or len(pages) != 2 or any(not isinstance(p, int) or isinstance(p, bool) or p < 0 for p in pages)):
+            raise ResearchError('pages must be [first, last] page numbers (1-based)')
+        if pages is not None:
+            pages = [max(1, pages[0]), max(1, pages[1])]  # a zero-based [0, 1] means the first two pages
+            if pages[1] < pages[0] or pages[1] - pages[0] + 1 > MAX_RENDERED_PAGES:
+                raise ResearchError(f'pages must be [first, last] with last >= first, covering at most {MAX_RENDERED_PAGES} pages')
         source = self.lookup(url)
         if not source:
             self.on_activity('Reading', url)

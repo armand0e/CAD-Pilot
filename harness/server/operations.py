@@ -75,15 +75,16 @@ SPECS = {
     'finish': {'message': {'type': 'string', 'minLength': 1, 'maxLength': 1500}},
     'ask': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 1000}},
     'ask_question': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
-                     'options': {'type': 'array', 'minItems': 0, 'maxItems': 6, 'items': obj({
-                         'label': {'type': 'string', 'minLength': 1, 'maxLength': 80},
-                         'description': {'type': 'string', 'maxLength': 200}})},
+                     'options': {'type': 'array', 'minItems': 0, 'maxItems': 6, 'items': {
+                         'type': 'object', 'additionalProperties': False, 'required': ['label'], 'properties': {
+                             'label': {'type': 'string', 'minLength': 1, 'maxLength': 80},
+                             'description': {'type': 'string', 'maxLength': 200}}}},
                      'multi_select': {'type': 'boolean'}},
     'research': {'query_or_url': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
                  'focus': {'type': 'string', 'maxLength': 500},
                  'part': {'type': 'integer', 'minimum': 0, 'maximum': 10000, 'description': 'Read part N of a long document (0 = focus passages / part 1)'},
-                 'pages': {'type': 'array', 'items': {'type': 'integer', 'minimum': 1, 'maximum': 10000}, 'minItems': 0, 'maxItems': 2,
-                           'description': 'PDF only: [first, last] pages (at most 4) to render as images'}},
+                 'pages': {'type': 'array', 'items': {'type': 'integer', 'minimum': 0, 'maximum': 10000}, 'minItems': 0, 'maxItems': 2,
+                           'description': 'PDF only: [first, last] page numbers, 1-based ([1, 2] renders the first two pages; at most 4)'}},
     # Legacy v1 tools: replayed from saved ledgers, not offered to the model.
     'hollow': {'body': TEXT, 'wall': EXPR, 'floor': EXPR, 'parameters': PARAMETERS},
     'side_window': {'body': TEXT, 'face': {'type': 'string', 'enum': ['front', 'back', 'left', 'right']},
@@ -1023,7 +1024,7 @@ model review, not mechanical fit certification.
 # goes through validate_operation, so the schemas here are guidance, not the trust boundary.
 # ---------------------------------------------------------------------------------------
 TOOL_DESCRIPTIONS = {
-    'view_image': 'Read an image by ID: a user/research image, saved CAD view (cad:r0001:top; iso/top/front/right), or archived context image. Optionally crop full-resolution pixels [left, top, right, bottom]. Use crop=[] for the full image. Returns pixels even when the original image is omitted from the current request. Use inspect to list saved CAD views.',
+    'view_image': 'Read an image by ID: a user/research image, saved CAD view (cad:r0001:top; iso/top/front/right), or archived context image. Optionally crop [left, top, right, bottom] in the pixels of the image as it was shown to you (its reported width x height); the crop is cut from the full-resolution original, so it shows more detail. Use crop=[] for the full image. Returns pixels even when the original image is omitted from the current request. Use inspect to list saved CAD views.',
     'create_body': ('Create a new body from one solid. kind=box|rounded_box|cylinder|cone|sphere needs dimensions '
                     '(box [L,W,H] along x,y,z; rounded_box [L,W,H,R]; cylinder [RADIUS,H]; cone [R1,R2,H]; sphere [R]), at, anchor, axis. '
                     'kind=extrude needs profile (list of [x,y] in the local XY plane, corners in order, first not repeated), height, at, axis; '
@@ -1052,7 +1053,7 @@ TOOL_DESCRIPTIONS = {
     'brief': 'Write or replace the design brief: what you build, each dimension tagged user | sourced | assumed, open questions. Update it when you decide a layout.',
     'research': 'Web lookup: query_or_url is 3-8 keywords (ten leads with snippets), or one http(s) URL to read a page/PDF. A read returns one part of the document: focus picks the most relevant passages, part=N pages through a long document, and pages=[first,last] renders up to four PDF pages as images you can read and crop with view_image. Reading the same URL again is free. A page must be read before its numbers count as sourced.',
     'research_images': 'Fetch a few reference pictures for a query; they are attached to your next turn so you can look at them.',
-    'import_reference': 'Download a public STEP/STL URL (or name an uploaded file) into the project as a reference model.',
+    'import_reference': 'Download a public STEP/STL/DXF/SVG/IGES URL (or name an uploaded file) into the project as a reference: official board outlines and drawings then import into model.py from /work/references/ (the bash sandbox has no network). Pages and PDFs go through research instead.',
     'recall_facts': 'Measurements you extracted from pages in earlier work, with their sources.',
     'design_notes': 'General design rules by topic: fdm enclosures, fasteners and fans, mechanical design.',
     'ask_question': 'Ask the user one focused question and wait for the answer, which comes back as this tool result. Offer 2-6 short options when there are natural choices (put the option you recommend first; describe trade-offs briefly); the user can always type their own answer instead. Use it for choices you would otherwise guess; never re-ask what the conversation already answers.',
@@ -1103,7 +1104,7 @@ def tool_definitions():
                           'required': ['index', 'operation']}
         else:
             spec = SPECS[tool]
-            parameters = {'type': 'object', 'properties': copy.deepcopy(spec), 'required': [k for k in spec if k not in ('parameters', 'part', 'pages')]}
+            parameters = {'type': 'object', 'properties': copy.deepcopy(spec), 'required': [k for k in spec if k not in ('parameters', 'part', 'pages', 'multi_select', 'focus', 'description')]}
         definitions.append({'type': 'function', 'function': {'name': tool, 'description': TOOL_DESCRIPTIONS[tool], 'parameters': parameters}})
     return definitions
 

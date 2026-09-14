@@ -18,6 +18,7 @@ def audit_stl(path, expected_solids, expected_volume, expected_bounds):
     vertices, edges, parent, signed_volumes = {}, {}, list(range(count)), []
     minimum, maximum = [math.inf] * 3, [-math.inf] * 3
     origin = None
+    degenerate, skipped = 0, set()
 
     def root(i):
         while parent[i] != i:
@@ -40,8 +41,17 @@ def audit_stl(path, expected_solids, expected_volume, expected_bounds):
         u = [b - a for a, b in zip(points[0], points[1])]
         v = [b - a for a, b in zip(points[0], points[2])]
         cross = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
-        if len(set(ids)) != 3 or sum(x*x for x in cross) == 0:
-            raise ValueError('STL contains a degenerate triangle')
+        if len(set(ids)) != 3:
+            # A sliver whose corners merged: its two real edges would pair with each
+            # other, so the neighbours already close across it. Skip it entirely.
+            degenerate += 1
+            skipped.add(face)
+            signed_volumes.append(0.0)
+            continue
+        if sum(x*x for x in cross) == 0:
+            # Zero-area triangle with three distinct corners (collinear tessellation of
+            # a curved seam): it still pairs its edges consistently and adds no volume.
+            degenerate += 1
         signed_volumes.append(sum((p - o) * c for p, o, c in zip(points[0], origin, cross)) / 6)
         for a, b in zip(ids, ids[1:] + ids[:1]):
             key = (min(a, b), max(a, b))
@@ -58,6 +68,8 @@ def audit_stl(path, expected_solids, expected_volume, expected_bounds):
         raise ValueError('STL has open boundary edges')
     volumes = {}
     for i, volume in enumerate(signed_volumes):
+        if i in skipped:
+            continue  # merged-corner slivers belong to no shell
         component = root(i)
         volumes[component] = volumes.get(component, 0) + volume
     # A solid with a sealed cavity has one positive outer shell and negative
@@ -71,5 +83,5 @@ def audit_stl(path, expected_solids, expected_volume, expected_bounds):
     if any(abs(a - b) > max(.06, abs(b) * 1e-5) for a, b in zip(bounds, expected_bounds)):
         raise ValueError('STL bounds disagree with native geometry')
     return {'closed_oriented_edges': True, 'boundary_shell_count': len(volumes),
-            'exterior_shell_count': expected_solids, 'triangles': count,
+            'exterior_shell_count': expected_solids, 'triangles': count, 'degenerate_triangles': degenerate,
             'volume_mm3': volume, 'bounds_mm': bounds, 'self_intersections_independently_checked': False}

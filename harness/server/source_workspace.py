@@ -19,6 +19,16 @@ from .specification import ROWS, merge_patch, check_verification
 MAX_FILE = 64 * 1024 * 1024
 MAX_TEXT = 1024 * 1024
 RESERVED = {'design-spec.json', 'CAD_GUIDE.md', 'cad_paths.py', 'svg_path.py', 'cad_paths.scad'}
+NETWORK_SIGNS = ('curl: command not found', 'wget: command not found', 'Temporary failure in name resolution', 'Network is unreachable',
+                 'urlopen error', 'Name or service not known', 'nodename nor servname', 'Could not resolve host', 'getaddrinfo')
+
+
+def network_hint(output):
+    """What to do instead when a sandboxed command tried to reach the network."""
+    if any(sign in output for sign in NETWORK_SIGNS):
+        return ('The workspace sandbox has no network access. Read pages and PDFs with the research tool; download STEP/STL/DXF/SVG/IGES '
+                'files with import_reference, which places them under /work/references/ for FreeCAD import.')
+    return ''
 CONTEXT_DIR = '.cadpilot-context'
 # Required software resources must not live in the persisted knowledge volume:
 # an existing Docker volume hides files added to that directory in a new image.
@@ -228,6 +238,10 @@ class SourceWorkspace:
         available |= set(self.sources())
         available |= set(saved_image_ids(self.project.path))
         evidence = {r['id']: r for r in self.evidence()}
+        input_ids = [r['id'] for r in self.inputs()]
+        def known_ids():
+            return ('known IDs: inputs ' + ', '.join(input_ids[-6:] or ['none']) + '; measurements ' +
+                    ', '.join(list(evidence)[-6:] or ['none']) + '; sources/images as listed by spec_read')
         current = self.spec() if current is None else current
         old_rows = {r['id']: r for key in ROWS for r in current[key]}
         seen = set()
@@ -246,10 +260,11 @@ class SourceWorkspace:
                 raise ValueError(f"{row['id']}: origin must be user, sourced or assumed (got {row.get('origin')!r}); new rows need id, text, origin and evidence")
             ids = row.get('evidence', [])
             if not isinstance(ids, list) or any(not isinstance(i, str) or i not in available for i in ids):
-                raise ValueError(f'Unknown evidence for {row["id"]}; read spec_read/inspect for actual IDs')
+                unknown = [i for i in ids if not isinstance(i, str) or i not in available] if isinstance(ids, list) else ids
+                raise ValueError(f'Unknown evidence for {row["id"]}: {unknown}. Use only IDs that exist; {known_ids()}')
             if row['origin'] == 'user' and not any(i.startswith('input:') for i in ids):
                 raise ValueError(f"{row['id']}: User decisions require an actual user input evidence ID (input:...) in evidence; "
-                                 'measurements alone do not show the user asked for it. Use origin assumed or sourced otherwise.')
+                                 f"measurements alone do not show the user asked for it. Use origin assumed or sourced otherwise. {known_ids()}")
             if row['origin'] == 'sourced' and not any(not i.startswith(('input:', 'measure:')) for i in ids):
                 raise ValueError(f"{row['id']}: Sourced requirements require an opened page or saved image ID in evidence")
             if row.get('status', 'open') not in ('open', 'implemented', 'verified', 'retired'):
@@ -400,6 +415,8 @@ class SourceWorkspace:
             if timeout is not None and (not isinstance(timeout, (int, float)) or not 0 < timeout <= 86400):
                 raise ValueError('timeout must be positive seconds (up to one day); omit for no wall-clock limit')
             result = await execute(self.path, ['/bin/bash', '-lc', args['command']], timeout=timeout)
+            if hint := network_hint(result['output']):
+                result['output'] += '\n' + hint
             self.files()
             try:
                 self.sync_spec()
@@ -473,7 +490,7 @@ class SourceWorkspace:
             if entry.suffix == '.py':
                 result = await execute(scratch, ['/opt/cad/usr/bin/python', '/source_program.py', relative], helpers=('source_program.py',))
                 if result['exitCode']:
-                    raise ValueError(build_error(result['output']))
+                    raise ValueError(build_error(result['output'], result['exitCode']))
                 manifest = scratch / 'build-parts.json'
                 if manifest.is_symlink() or manifest.stat().st_size > MAX_TEXT:
                     raise ValueError('Invalid parts manifest')
@@ -515,7 +532,7 @@ class SourceWorkspace:
                                    helpers=('source_kernel.py', 'cad_worker.py', 'design.py', 'stl_audit.py'))
             (stage / 'compiler.log').write_text(result['output'])
             if result['exitCode']:
-                raise ValueError(build_error(result['output']))
+                raise ValueError(build_error(result['output'], result['exitCode']))
             from .projects import FILES
             for name in FILES:
                 path = stage / name

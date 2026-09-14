@@ -8,11 +8,7 @@ import httpx
 from .research import ResearchError
 
 
-async def search(base_url, query, *, images=False):
-    parts = urlsplit(base_url)
-    if parts.scheme not in ('http', 'https') or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
-        raise ResearchError('Invalid SearXNG server URL in research configuration')
-    params = {'q': query, 'format': 'json', 'categories': 'images' if images else 'general'}
+async def _query(base_url, params):
     try:
         async with asyncio.timeout(40), httpx.AsyncClient(timeout=35, trust_env=False, follow_redirects=False) as client:
             async with client.stream('GET', base_url.rstrip('/') + '/search', params=params) as response:
@@ -32,6 +28,34 @@ async def search(base_url, query, *, images=False):
         if isinstance(error, ResearchError):
             raise
         raise ResearchError('SearXNG did not return a valid JSON search response') from None
+    return data
+
+
+def engine_warnings(data):
+    """Unresponsive engines as readable warnings: SearXNG reports [name, reason] pairs."""
+    warnings = []
+    for row in (data.get('unresponsive_engines') or [])[:12]:
+        if isinstance(row, (list, tuple)) and len(row) >= 2:
+            message = f'{row[0]}: {row[1]}'
+        elif isinstance(row, dict):
+            message = ': '.join(str(v) for v in row.values())
+        else:
+            message = str(row)
+        warnings.append({'code': 'engine_unavailable', 'message': message[:300]})
+    return warnings
+
+
+async def search(base_url, query, *, images=False, retry_pause=2.0):
+    parts = urlsplit(base_url)
+    if parts.scheme not in ('http', 'https') or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
+        raise ResearchError('Invalid SearXNG server URL in research configuration')
+    params = {'q': query, 'format': 'json', 'categories': 'images' if images else 'general'}
+    data = await _query(base_url, params)
+    if not data['results'] and data.get('unresponsive_engines'):
+        # Rate-limited or timed-out engines usually answer a moment later; one retry
+        # saves the model a turn of rephrasing a query that was fine.
+        await asyncio.sleep(retry_pause)
+        data = await _query(base_url, params)
     rows = []
     for item in data['results'][:40]:
         if not isinstance(item, dict):
@@ -39,6 +63,4 @@ async def search(base_url, query, *, images=False):
         rows.append({'url': item.get('img_src') if images else item.get('url'),
                      'page': item.get('url'), 'title': str(item.get('title') or ''),
                      'snippet': str(item.get('content') or ''), 'engine': str(item.get('engine') or 'searxng')})
-    warnings = [{'code': 'engine_unavailable', 'message': str(row)[:300]}
-                for row in (data.get('unresponsive_engines') or [])[:12]]
-    return 'searxng', rows, warnings
+    return 'searxng', rows, engine_warnings(data)

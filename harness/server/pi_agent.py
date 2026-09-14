@@ -22,6 +22,14 @@ from .dimension_research import DELEGATE, investigate
 
 ROOT = Path(__file__).resolve().parents[1]
 PI_HIDDEN = {'ask'}  # legacy duplicate of ask_question; accepted in old ledgers, not offered to Pi
+# Pi runs a whole tool batch sequentially when any call in it is sequential. Tools that never
+# touch the CAD document may run alongside a research delegation, so a question asked in the
+# same turn as research_dimensions reaches the user at once instead of after the report.
+PARALLEL_SAFE = {'ask_question', 'view_image', 'research', 'research_images', 'design_notes', 'recall_facts'}
+
+
+def parallel_safe(definitions):
+    return [{**t, 'execution': 'parallel'} if t['function']['name'] in PARALLEL_SAFE else t for t in definitions]
 
 
 def pi_image(path, **metadata):
@@ -224,7 +232,7 @@ class PiBridge:
             work = SourceWorkspace(self.ctx['project'])
             work.ensure()
             self.record_inputs(work)
-            definitions = [t for t in TOOL_DEFINITIONS if t['function']['name'] not in PI_HIDDEN | {'inspect'}] + WORKSPACE_TOOLS + [DELEGATE]
+            definitions = parallel_safe([t for t in TOOL_DEFINITIONS if t['function']['name'] not in PI_HIDDEN | {'inspect'}] + WORKSPACE_TOOLS) + [DELEGATE]
             definitions.append({'type': 'function', 'function': {'name': 'inspect',
                 'description': 'Read the current CAD workspace, agreed brief, saved research, image IDs, selection, measurements and rendered views. Use at the start of a task and after resuming.',
                 'parameters': {'type': 'object', 'properties': {}, 'additionalProperties': False}}})

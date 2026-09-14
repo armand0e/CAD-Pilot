@@ -98,13 +98,21 @@ def saved_image_ids(project_path):
 def inspect_image(project_path, name, crop=None):
     path = image_path(project_path, name)
     original = path.with_name(path.name + '.original.png')
+    with Image.open(path) as shown:
+        shown_size = shown.size
     with Image.open(original if original.is_file() and not original.is_symlink() else path) as source:
         image = source.copy()
     width, height = image.size
     if crop:
-        left, top, right, bottom = crop
-        if not (0 <= left < right <= width and 0 <= top < bottom <= height):
-            raise ValueError(f'Crop must fit within {width} x {height} pixels')
+        # The model chooses pixels in the picture it was shown, which may be a
+        # downscaled copy of the stored original: scale into the original and clamp.
+        sx, sy = width / max(1, shown_size[0]), height / max(1, shown_size[1])
+        left, top, right, bottom = [int(round(v * f)) for v, f in zip(crop, (sx, sy, sx, sy))]
+        left, top = max(0, min(left, width - 1)), max(0, min(top, height - 1))
+        right, bottom = max(left + 1, min(right, width)), max(top + 1, min(bottom, height))
+        if right - left < 2 or bottom - top < 2 or crop[2] <= crop[0] or crop[3] <= crop[1]:
+            raise ValueError(f'Crop must be [left, top, right, bottom] with right > left and bottom > top, within {shown_size[0]} x {shown_size[1]} pixels as shown')
+        crop = [left, top, right, bottom]
         image = image.crop(crop)
     buffer = io.BytesIO()
     image.save(buffer, 'PNG')
@@ -115,8 +123,9 @@ def inspect_image(project_path, name, crop=None):
     if stored['id'] != name:
         from .projects import atomic_json
         atomic_json(Path(project_path) / 'research-images' / (stored['id'] + '.provenance.json'), provenance)
-    return stored | {'path': str(image_path(project_path, stored['id'])), 'source_id': name,
-                     'original_width': width, 'original_height': height, 'provenance': provenance}
+    return stored | {'path': str(image_path(project_path, stored['id'])), 'source_id': name, 'crop': crop,
+                     'original_width': width, 'original_height': height, 'shown_width': shown_size[0], 'shown_height': shown_size[1],
+                     'provenance': provenance}
 
 
 def image_provenance(project_path, name):

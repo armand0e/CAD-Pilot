@@ -271,6 +271,42 @@ There is no custom native context compactor or secondary native agent loop.
   writes an SVG that OpenSCAD can `import()`. `cad_paths.scad` (supplied in /work)
   gives OpenSCAD the 2D modules `rounded_rect`, `slot`, `polygon_n`, `hexagon`,
   `d_shape`, `svg_outline` and a convex `loft2`.
+- Tool batches: Pi runs a whole batch sequentially when any call in it is sequential, so a
+  question asked in the same turn as `research_dimensions` used to reach the user only
+  after the research report (18 minutes in a live run). `ask_question`, `view_image`,
+  `research`, `research_images`, `design_notes` and `recall_facts` are now marked
+  parallel-safe; CAD tools stay sequential, so a build in the same batch still serialises.
+  The workspace prompt also says that a question needing no geometry gets a direct,
+  sourced answer without specification bookkeeping.
+- An `ask_question` result carries `answer.evidence_id` (`input:<event id>`), the user
+  input ID a specification row decided by that answer must cite, so the model no longer
+  guesses IDs or loses a turn to "Unknown evidence" after every question.
+- Reference files: `import_reference` accepts STEP, STL, DXF, SVG and IGES URLs (and
+  uploads), recognises the file by content rather than by the URL's extension (an
+  extensionless document link that redirects to a `.dxf` download works) and names it
+  after the URL or its document number. In a source workspace the file appears under
+  `/work/references/`; `CAD_GUIDE.md` shows the FreeCAD imports (`Part.Shape().read`,
+  `Mesh.Mesh`, `importDXF.insert`, `importSVG.insert`), so official board outlines give
+  exact hole centres. A `research` read of such a download says so and points to
+  `import_reference` instead of "navigation failed"; plain-text downloads read as pages.
+- The bash sandbox has no network. The prompt and `CAD_GUIDE.md` say so, and a command
+  that tried anyway (`curl: command not found`, name resolution or `urlopen` errors)
+  gets a hint naming `research` and `import_reference` in its output.
+- SearXNG: an empty answer whose engines were rate-limited or timed out is retried once
+  after two seconds; a still-empty search reports the engine reasons ("google cse: Too
+  many requests") so the model can tell a bad query from a flaky engine.
+- Verification feature links: prose feature labels ("dome top") never block a numeric
+  check; only a feature that names a CAD identifier (`Part2`, `Part1:Face3`) must match
+  the measured body, and measuring the whole source result (`CADPilotResult`) covers
+  every feature. `spec_update` errors name the offending row and list the known IDs.
+- STL audit: a mesh whose facets repeat a vertex id (FreeCAD lofts and revolves emit
+  them) is no longer rejected as "degenerate"; such facets are skipped in the shell
+  volume check and counted in the report. Kernel crashes (segfault, abort, kill) are
+  explained in the build error with the usual causes (fillet radius, boolean on
+  tangent faces) instead of "(no output)".
+- Schema leniency for Pi's strict validator: `research` accepts `part`/`pages` from 0
+  (clamped to 1), `ask_question` options need only a label, and `view_image` crops
+  given in shown-image pixels are scaled to the original and clamped to its bounds.
 - Live scenarios: `harness/tests/live_scenarios_check.py plate pizero` drives a running
   workspace (set `CADPILOT_BASE`, and `CADPILOT_PASSWORD_FILE` for Docker) and grades
   the outcome; evidence lands in `runs/harness-checks/live-*/`. It needs the model

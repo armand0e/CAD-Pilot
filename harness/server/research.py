@@ -245,6 +245,21 @@ def source(url, title, text, kind, **extra):
             'truncation': {'text': len(text) > MAX_TEXT, 'original_characters': len(text), 'title': len(title) > 1000}, **extra}
 
 
+def textual(body, content_type=''):
+    """Decoded text of a plain-text download, or None when the bytes are binary."""
+    if not body or content_type.split('/')[0] in ('image', 'audio', 'video', 'font'):
+        return None
+    try:
+        text = body.decode('utf-8')
+    except UnicodeDecodeError:
+        if not content_type.startswith('text/'):
+            return None
+        text = body.decode('latin-1')
+    sample = text[:65536]
+    control = sum(1 for c in sample if ord(c) < 32 and c not in '\t\n\r\f')
+    return text if control <= len(sample) * 0.01 else None
+
+
 class ResearchTool:
     def __init__(self, config):
         self.config = config
@@ -278,7 +293,9 @@ class ResearchTool:
             if len(results) == 10:
                 break
         if not results:
-            raise ResearchError('Search returned no readable results; change the query or read a known URL')
+            detail = '; '.join(w['message'] for w in warnings[:3] if isinstance(w, dict) and w.get('message'))
+            raise ResearchError('Search returned no readable results' + (f' (search engines unavailable: {detail})' if detail else '')
+                                + '; try once more with different keywords or read a known URL', code='no_results')
         return bounded_result({'operation': 'search', 'query': query, 'provider': provider, 'sources': results, 'warnings': warnings,
                 'notice': 'Search snippets are leads, NOT verified specifications. Read the relevant primary-source page before relying on dimensions.'})
 
@@ -323,7 +340,14 @@ class ResearchTool:
         # as lm-chat-proxy.js; no paid API, public relay, or Jina dependency.
         if not urlsplit(url).path.lower().endswith('.pdf'):
             from .browser_research import browser_read
-            result = await browser_read(url)
+            try:
+                result = await browser_read(url)
+            except ResearchError as error:
+                if error.code != 'unavailable' or 'navigation' not in str(error):
+                    raise
+                # Chromium turns file downloads (DXF, STEP, plain text, an extensionless
+                # PDF) into failed navigations; fetch those directly and classify them.
+                return await self._download(url, requested_url)
             if not result.get('pdf'):
                 return {'kind': 'page', 'url': public_url(result['url']), 'requested_url': requested_url, 'title': result['title'],
                         'text': result['text'], 'links': result['links'], 'headings': result.get('headings', []),
@@ -332,6 +356,24 @@ class ResearchTool:
         url, content_type, body = await fetch_public(url)
         if not body.startswith(b'%PDF-'):
             raise ResearchError('This datasheet URL did not return a PDF. Try a direct public PDF link.')
+        return await self._pdf_document(url, requested_url, body)
+
+    async def _download(self, url, requested_url):
+        url, content_type, body = await fetch_public(url)
+        if body.startswith(b'%PDF-'):
+            return await self._pdf_document(url, requested_url, body)
+        from .projects import sniff_reference
+        kind = sniff_reference(body)
+        if kind:
+            raise ResearchError(f'This URL is a {kind.upper()} file download ({len(body):,} bytes), not a readable page. Bring it into the project '
+                                'with import_reference; it then appears under /work/references/ for FreeCAD import.', code='file_download')
+        text = textual(body, content_type)
+        if text is None:
+            raise ResearchError(f'This URL returned a {content_type or "binary"} file, not a readable page or PDF')
+        return {'kind': 'page', 'url': url, 'requested_url': requested_url, 'title': Path(urlsplit(url).path).name or url,
+                'text': text, 'links': [], 'headings': []}
+
+    async def _pdf_document(self, url, requested_url, body):
         # Whole document, bounded by the sandbox's CPU and output-size limits, so a
         # researcher can page to a drawing on page 30; read() keeps its 40-page view.
         text = await pdf_text(body, 1, 400)
