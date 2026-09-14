@@ -1086,6 +1086,7 @@ class AgentRunner:
 
     async def _research_step(self, objective, focus, *, identity=None):
         self.set_phase('researching')
+        pi_research = self._pi_bridge is not None or getattr(self, 'research_profile', False)
         self._research_calls += 1
         # 0 (the default) means no call budget: the model searches as often as it needs.
         maximum = int(self.config.get('research', {}).get('max_calls', 0) or 0)
@@ -1145,7 +1146,10 @@ class AgentRunner:
                        'notes': self.research['notes'], 'cached': bool(cached and time.time() - cached[0] < 900)})
             lookup_settled = True
             # Only actual fetched pages can support facts, not indexed snippets.
-            if result['operation'] == 'read':
+            # Pi consumes the source itself and the researcher submits its own
+            # cited report. The legacy extractor adds another model round trip
+            # and used to discard the evidence before Pi could read it.
+            if result['operation'] == 'read' and not pi_research:
                 self.set_phase('planning')
                 messages = [{'role': 'system', 'content':
                     'Extract the specifications relevant to the user task from the page just read. Return exactly the notes schema. '
@@ -1174,10 +1178,12 @@ class AgentRunner:
                         messages.extend([{'role': 'assistant', 'content': raw}, {'role': 'user', 'content': str(error)}])
                         if attempt == 1:
                             self.emit({'t': 'note', 'message': 'Page retrieved, but its extracted claims lacked valid supporting quotes. Use the source directly; no new fact was accepted.'})
-            self.execution_feedback = {'tool': 'research', 'result': {k: v for k, v in result.items() if k != 'sources'}}
+            feedback = {'tool': 'research', 'result': result if pi_research else {k: v for k, v in result.items() if k != 'sources'}}
+            self.execution_feedback = feedback
             self.history_lines.append('Web ' + result['operation'] + ': ' + objective + '; source IDs: ' + ', '.join(source_ids))
             self.emit({'t': 'research_notes', **identity, 'notes': self.research['notes']})
             self._save_conversation()
+            return feedback
         except (GuidanceChanged, asyncio.CancelledError):
             if not lookup_settled:
                 self.emit({'t': 'research_cancelled', **identity, 'query': objective, 'message': 'Lookup cancelled; earlier sources are preserved.'})
@@ -1187,12 +1193,14 @@ class AgentRunner:
             self._research_failures.setdefault(key[0], (time.time(), detail))
             if len(self._research_failures) > 24:
                 self._research_failures.pop(next(iter(self._research_failures)))
-            self.execution_feedback = {'tool': 'research', 'error': detail, 'query': objective}
+            feedback = {'tool': 'research', 'error': detail, 'query': objective}
+            self.execution_feedback = feedback
             self.emit({'t': 'note' if lookup_settled else 'research_error', **identity, 'query': objective,
                        'message': 'Page was retrieved, but specification extraction did not finish.' if lookup_settled else detail,
                        'code': getattr(error, 'code', 'unavailable'), 'diagnostics': getattr(error, 'diagnostics', [])})
             if maximum and self._research_calls > maximum + 1:
                 self.pause(True, 'Research is not resolving the missing specs. Please provide a source or tell me which dimensions may remain provisional.')
+            return feedback
 
     def _store_page_images(self, pages, source):
         project = getattr(self.session, 'project', None)
@@ -1234,14 +1242,18 @@ class AgentRunner:
             self.research['sources'] = (self.research['sources'] + sources)[-40:]
             self._save_conversation()
             self.emit({'t': 'research_result', **identity, 'operation': 'images', 'query': query, 'notice': result['notice'], 'sources': sources, 'cached': False})
-            self.execution_feedback = {'tool': 'research_images', 'result': {'query': query, 'images': [s['title'] for s in sources], 'notice': result['notice']}}
+            feedback = {'tool': 'research_images', 'result': {'query': query, 'images': [s['title'] for s in sources], 'sources': sources, 'notice': result['notice']}}
+            self.execution_feedback = feedback
+            return feedback
         except (GuidanceChanged, asyncio.CancelledError):
             self.emit({'t': 'research_cancelled', **identity, 'query': query, 'message': 'Image lookup cancelled.'})
             raise
         except Exception as error:
             detail = str(error)[:600] if isinstance(error, ResearchError) else 'Image search failed; no images were retrieved.'
-            self.execution_feedback = {'tool': 'research_images', 'error': detail, 'query': query}
+            feedback = {'tool': 'research_images', 'error': detail, 'query': query}
+            self.execution_feedback = feedback
             self.emit({'t': 'research_error', **identity, 'query': query, 'message': detail, 'code': getattr(error, 'code', 'unavailable'), 'diagnostics': []})
+            return feedback
 
     async def _import_reference(self, url_or_name):
         project = getattr(self.session, 'project', None)
@@ -1388,12 +1400,10 @@ class AgentRunner:
                 answer = await self._await_answer(question if self._pi_bridge is not None else question + self._grounding_caveat(question), args.get('options'), args.get('multi_select', False))
                 return {'result': {'ok': True, 'question': question, 'answer': answer}, 'failed': False, 'free': True}
             if name == 'research':
-                await self._research_step(args['query_or_url'], args['focus'], identity=identity)
-                feedback = self.execution_feedback or {}
+                feedback = await self._research_step(args['query_or_url'], args['focus'], identity=identity)
                 return {'result': feedback, 'failed': 'error' in feedback, 'free': True, 'research_pages': True}
             if name == 'research_images':
-                await self._research_images_step(args['query'], identity=identity)
-                feedback = self.execution_feedback or {}
+                feedback = await self._research_images_step(args['query'], identity=identity)
                 return {'result': feedback, 'failed': 'error' in feedback, 'free': True}
             if name == 'design_notes':
                 settle('completed', 'Design notes consulted.')

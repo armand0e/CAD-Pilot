@@ -226,6 +226,10 @@ There is no custom native context compactor or secondary native agent loop.
   `inspect` sends saved research notes and source links instead of repeating pages.
 - After a source build, Pi's active tools omit incompatible legacy geometry and
   parameter operations immediately. Existing operation-based projects retain them.
+- Pi research tool results include the returned URLs, source IDs, page text and
+  document links. Pi reads this evidence directly; the legacy per-page extraction
+  model call is skipped. Child researchers return cited findings and explicit gaps
+  once the requested dimensions are covered or available documentation is exhausted.
 - `spec_update` patches rows by ID. Removing a requirement requires retaining a
   retired row with its reason and user evidence. Verification records distinguish
   numeric CAD comparisons, visual observations, and file existence/hash checks;

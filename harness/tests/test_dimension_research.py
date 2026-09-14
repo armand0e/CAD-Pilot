@@ -4,12 +4,13 @@ import json
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from pi_fixture import pi_model, messages as pi_messages, message_text
 from server.agent import AgentRunner
 from server.dimension_research import investigate, submit
 from server.projects import Project
+from server.research import ResearchTool, bounded_result
 
 
 class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
@@ -36,8 +37,17 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
                 child_tools.extend(t['function']['name'] for t in tools)
                 child_calls+=1
                 if child_calls==1:
-                    name,args='research',{'query_or_url':self.source['url'],'focus':'Board length and thickness'}
+                    name,args='research',{'query_or_url':'Fixture board rev A dimensions','focus':'Board length and thickness'}
                 elif child_calls==2:
+                    # The production handoff previously dropped every source,
+                    # forcing the child to guess URLs despite a successful search.
+                    self.assertIn(self.source['url'],str(messages))
+                    self.assertIn('Official fixture drawing',str(messages))
+                    name,args='research',{'query_or_url':self.source['url'],'focus':'Board length and thickness'}
+                elif child_calls==3:
+                    self.assertIn(self.source['text'][:100],str(messages))
+                    self.assertIn('web_fixture',str(messages))
+                    self.assertIn('drawing.pdf',str(messages))
                     name,args='submit_research',self.report
                 else:return {'content':'Research recorded.'}
             else:
@@ -50,18 +60,23 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
                     return {'content':'I have the documented length; thickness remains unknown.'}
             return {'content':'','tool_calls':[{'id':f'{"child" if is_child else "parent"}-{child_calls if is_child else parent_calls}',
                                                'name':name,'arguments':json.dumps(args)}]}
-        async def research(child,objective,focus,**kwargs):
-            self.assertTrue(child.research_profile)
-            child.research['sources']=[self.source]
-            child.execution_feedback={'sources':[self.source]}
-            child.emit({'t':'research_start','operation':'read','query':objective})
-            child.emit({'t':'research_result','sources':[self.source]})
-        with patch.object(AgentRunner,'_research_step',research),pi_model(self.runner,reply):
+        async def search(tool,query):
+            return {'operation':'search','query':query,'sources':[{**self.source,'kind':'search_result','text':'Official fixture drawing'}]}
+        async def read(tool,url,focus):
+            self.assertEqual(url,self.source['url'])
+            return bounded_result({'operation':'read','sources':[{**self.source,'text':self.source['text'][:12000],
+                'links':[{'url':'https://manufacturer.example/drawing.pdf','title':'Download drawing'}]}]})
+        # Mock only the network boundary. Exercise the real research handler,
+        # adapter and Pi loop, and forbid the duplicate legacy model extraction.
+        extractor=AsyncMock(side_effect=AssertionError('Pi research must not invoke the legacy extractor'))
+        with patch.object(ResearchTool,'search',search),patch.object(ResearchTool,'read',read), \
+             patch.object(AgentRunner,'_chat',extractor),pi_model(self.runner,reply):
             self.runner.start('Model the fixture board case','auto')
             async with asyncio.timeout(25):
                 while self.runner.phase!='awaiting':await asyncio.sleep(.02)
             await self.runner.wait_stopped()
-        self.assertEqual((parent_calls,child_calls),(2,3))
+        self.assertEqual((parent_calls,child_calls),(2,4))
+        extractor.assert_not_awaited()
         self.assertIn('research',child_tools);self.assertIn('submit_research',child_tools)
         self.assertFalse(set(child_tools)&{'cad_build','create_body','bash','read','write','edit','research_dimensions','ask_question'})
         self.assertIsNone(self.project.read()['head'])
