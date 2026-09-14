@@ -13,7 +13,12 @@ class Transcript:
     def __init__(self, path):
         self.path = path
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
+            if 'kind' not in {row[1] for row in db.execute('PRAGMA table_info(events)')}:
+                db.execute('ALTER TABLE events ADD COLUMN kind TEXT')
+                db.execute("UPDATE events SET kind=json_extract(payload, '$.t')")
+            db.execute("CREATE INDEX IF NOT EXISTS input_events ON events(seq) WHERE kind IN ('user','answer')")
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=2)
@@ -24,8 +29,14 @@ class Transcript:
             project = saved.pop('project', {})
             saved['saved_revision'] = {k: project.get(k) for k in ('id', 'head', 'name', 'geometry')}
         with self.connect() as db:
-            db.execute('INSERT OR IGNORE INTO events(id,payload) VALUES (?,?)',
-                       (saved['event_id'], json.dumps(saved, ensure_ascii=False)))
+            db.execute('INSERT OR IGNORE INTO events(id,payload,kind) VALUES (?,?,?)',
+                       (saved['event_id'], json.dumps(saved, ensure_ascii=False), saved['t']))
+
+    def input_events(self, after=0):
+        """Read only new user messages/question answers, using the input index."""
+        with self.connect() as db:
+            rows = list(db.execute("SELECT seq,payload FROM events WHERE kind IN ('user','answer') AND seq>? ORDER BY seq", (after,)))
+        return (rows[-1][0] if rows else after), [json.loads(row[1]) for row in rows]
 
     def read(self):
         with self.connect() as db:

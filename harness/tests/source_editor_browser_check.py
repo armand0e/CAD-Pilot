@@ -2,6 +2,7 @@
 import io
 import json
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
@@ -44,8 +45,10 @@ def main():
                 return
             route.fulfill(json=data)
         page.route('**/*',serve)
+        hold_reconnect=[False]
         def socket(ws):
-            sockets.append(ws);ws.send(json.dumps({'t':'snapshot','active':False,'paused':False,'events':[],'transcript':[],'phase':'idle'}))
+            sockets.append(ws)
+            if not hold_reconnect[0]:ws.send(json.dumps({'t':'snapshot','active':False,'paused':False,'events':[],'transcript':[],'phase':'idle'}))
         page.route_web_socket('**/ws/agent/*',socket)
         frame=io.BytesIO();Image.new('RGB',(1280,900),'#333333').save(frame,'JPEG')
         page.route_web_socket('**/ws/view/*',lambda ws:ws.send(frame.getvalue()))
@@ -69,9 +72,46 @@ def main():
         sockets[-1].send(json.dumps({'t':'control','locked':True,'mode':'auto'}))
         expect(page.locator('#workspace-content')).not_to_be_editable()
         expect(page.locator('#workspace-build')).to_be_disabled()
+        research={'t':'research_agent','agent_id':'research-1','task':'Raspberry Pi 5 · mounting dimensions',
+                  'status':'running','activity':'Reading a source','detail':'Official mechanical drawing',
+                  'started_at':time.time()-62,'ts':time.time(),'searches':2,'pages_read':1,
+                  'dimensions':['Board outline','Mounting-hole positions'],
+                  'sources':[{'id':'official','title':'Raspberry Pi mechanical drawing','url':'https://www.raspberrypi.com/documentation/','kind':'pdf'},
+                             {'id':'unsafe','title':'Unsafe link','url':'javascript:alert(1)','kind':'page'}]}
+        sockets[-1].send(json.dumps(research))
+        card=page.locator('.research-agent')
+        expect(card).to_be_visible();expect(card.locator('.research-agent-badge')).to_have_text('Running')
+        expect(card.locator('.research-agent-elapsed')).to_have_text(re.compile('1:[0-5][0-9]'))
+        card.locator('summary').click()
+        expect(card.locator('a')).to_have_count(1)
+        expect(card.locator('.research-agent-counts')).to_contain_text('1 page read')
+        expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
+        page.screenshot(path='/tmp/cad-research-sidebar.png')
+        hold_reconnect[0]=True
+        previous=len(sockets);sockets[-1].close(code=1001,reason='Fixture connection drop')
+        expect(card.locator('.research-agent-badge')).to_have_text('Reconnecting')
+        expect(card).not_to_have_class(re.compile('is-live'))
+        for _ in range(30):
+            if len(sockets)>previous:break
+            page.wait_for_timeout(100)
+        assert len(sockets)>previous,'Agent stream did not reconnect'
+        # Reconnect uses the snapshot even when chat's bounded event tail is empty.
+        sockets[-1].send(json.dumps({'t':'snapshot','active':True,'paused':False,'mode':'auto','events':[],
+                                    'transcript':[],'phase':'modeling','research_agents':[research]}))
+        expect(page.locator('.research-agent')).to_have_count(1)
+        expect(page.locator('.research-agent-badge')).to_have_text('Running')
+        for status,label in [('completed','Complete'),('cancelled','Stopped'),('failed','Failed')]:
+            sockets[-1].send(json.dumps({**research,'status':status,'finished_at':time.time(),'ts':time.time(),
+                                        'activity':'Research complete' if status=='completed' else 'Research stopped',
+                                        'summary':'Board outline documented; mounting tolerance remains unknown.'}))
+            expect(page.locator('.research-agent-badge')).to_have_text(label)
+            expect(page.locator('.research-agent')).not_to_have_class(re.compile('is-live'))
+        page.set_viewport_size({'width':390,'height':844})
+        expect(page.locator('.research-agent')).to_be_visible()
+        assert page.locator('.research-agent').bounding_box()['width']<=390
         assert not errors,errors
         browser.close()
-        print('PASS: source/spec editor, independent chat draft, file save/build, unsaved drafts and active-agent protection')
+        print('PASS: source editor, independent chat draft, research sidebar progress, sources, reconnect, completion/cancellation/failure and mobile layout')
 
 
 if __name__=='__main__':main()

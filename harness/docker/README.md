@@ -220,6 +220,21 @@ There is no custom native context compactor or secondary native agent loop.
   explicit output limits (including Pi's summary budget) remain in effect. True input
   overflow still goes to Pi's compaction. The request diagnostic records the actual
   transmitted payload, including allocation retries.
+- CAD overviews are limited to 24,000 serialized characters. Full specifications
+  stay in `design-spec.json`; oversized overview records are available to Pi read
+  in `.cadpilot-context/`, excluded from source builds and dirty-file checks.
+  `inspect` sends saved research notes and source links instead of repeating pages.
+- After a source build, Pi's active tools omit incompatible legacy geometry and
+  parameter operations immediately. Existing operation-based projects retain them.
+- `spec_update` patches rows by ID. Removing a requirement requires retaining a
+  retired row with its reason and user evidence. Verification records distinguish
+  numeric CAD comparisons, visual observations, and file existence/hash checks;
+  old unscoped claims are preserved but displayed as needing verification.
+- User-input evidence uses an indexed, incremental transcript reader. Older
+  transcript databases migrate in place while preserving every UI event.
+- The assistant sidebar shows the dimension researcher's actual activity, elapsed
+  time, source links and outcome. These compact UI events survive reconnects;
+  child reasoning and complete source pages remain in the separate investigation.
 
 `harness/pi/setup.sh` installs the pinned packages for native development. Docker uses
 `npm ci` and includes the same lockfile. Downloaded onboarding bundles include the Pi

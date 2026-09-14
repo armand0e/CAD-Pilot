@@ -150,12 +150,33 @@ class PiBridge:
         self.answer_text = ''
         self.thought_text = ''
         self.tool_inputs = {}
+        self.input_cursor = 0
 
     def active_names(self):
         names = [t['function']['name'] for t in self.runner._tool_definitions()]
         if getattr(self.runner, 'research_profile', False):
             return [n for n in names if n in RESEARCH_TOOLS] + ['submit_research']
+        if (self.ctx.get('saved', {}).get('design') or {}).get('format') == 'source-v1':
+            from .operations import SOURCE_INCOMPATIBLE_TOOLS
+            names = [n for n in names if n not in SOURCE_INCOMPATIBLE_TOOLS]
         return names + WORKSPACE_NAMES + PI_NAMES + (['research_dimensions'] if self.runner.web_enabled else [])
+
+    def record_inputs(self, work):
+        if self.runner.transcript:
+            cursor, events = self.runner.transcript.input_events(self.input_cursor)
+            if events:
+                work.record_inputs(events)
+            else:
+                work.ensure()
+            self.input_cursor = cursor  # Advance only after the evidence was saved.
+        else:
+            work.record_inputs(self.runner.events)
+
+    async def sync_tools(self):
+        active = self.active_names()
+        if active != self.active_tools:
+            await self.request('tools', active=active)
+            self.active_tools = active
 
     async def send(self, message):
         if not self.proc or self.proc.returncode is not None:
@@ -200,7 +221,7 @@ class PiBridge:
         else:
             work = SourceWorkspace(self.ctx['project'])
             work.ensure()
-            work.record_inputs(self.runner.transcript.read() if self.runner.transcript else self.runner.events)
+            self.record_inputs(work)
             definitions = TOOL_DEFINITIONS + WORKSPACE_TOOLS + [DELEGATE]
         self.active_tools = self.active_names()
         definitions = [t for t in definitions if t['function']['name'] != 'inspect']
@@ -362,21 +383,23 @@ class PiBridge:
     def inspect(self):
         from .agent import geometry_summary
         runner, ctx = self.runner, self.ctx
-        if getattr(runner, 'research_profile', False):
-            return {'research': runner.research, 'reference_images': [{k:v for k,v in i.items() if k != 'path'} for i in runner.attachments + runner.pending_images]}
         work = SourceWorkspace(ctx['project'])
-        work.record_inputs(runner.transcript.read() if runner.transcript else runner.events)
-        return {'head': ctx['expected_head'], 'workspace': ctx['ledger'], 'state': ctx['state'],
+        research = runner._research_context(pages=False)
+        if getattr(runner, 'research_profile', False):
+            # Research remains isolated from the modeler's context as before.
+            return {'research': research, 'reference_images': [{k:v for k,v in i.items() if k != 'path'} for i in runner.attachments + runner.pending_images]}
+        self.record_inputs(work)
+        return work.context_result('inspect', {'head': ctx['expected_head'], 'workspace': ctx['ledger'], 'state': ctx['state'],
                 'source_workspace': work.describe(),
                 'design_specification': work.spec_context(),
                 'geometry': geometry_summary(ctx['geometry'], ctx['state']), 'design_brief': runner.design_brief,
-                'research': runner.research, 'library_facts': runner.library_facts,
+                'research': research, 'library_facts': runner.library_facts,
                 'web_search_enabled': runner.web_enabled,
                 'selection': runner._selection_context(ctx['geometry'], ctx['state']),
                 'references': [{k: v for k, v in image.items() if k != 'path'} for image in runner.attachments + runner.pending_images],
                 'image_archive': saved_image_ids(ctx['project'].path),
                 'saved_views': [{'revision': revision['id'], 'images': [f"cad:{revision['id']}:{view}" for view in ('iso', 'top', 'front', 'right')
-                                if f'view-{view}.png' in revision['sha256']]} for revision in ctx['project'].read()['revisions']]}
+                                if f'view-{view}.png' in revision['sha256']]} for revision in ctx['project'].read()['revisions']]})
 
     def views(self):
         content = []
@@ -450,6 +473,9 @@ class PiBridge:
             # Pi snapshots the next model configuration after this tool batch.
             # Apply live context/effort changes before returning its last result.
             await self.sync_model()
+            # Change Pi's next request immediately after a source build, including
+            # builds in the middle of a tool batch (without waiting for steering).
+            await self.sync_tools()
             await self.send({'type': 'tool_result', 'id': message['id'], 'content': content, 'isError': failed})
         except (OSError, RuntimeError):
             pass
@@ -500,10 +526,7 @@ async def run_pi(runner, intent, *, persistent=False):
             if bridge.error:
                 raise bridge.error
             await runner._interruptible(bridge.sync_model())
-            active_tools = bridge.active_names()
-            if active_tools != bridge.active_tools:
-                await runner._interruptible(bridge.request('tools', active=active_tools))
-                bridge.active_tools = active_tools
+            await runner._interruptible(bridge.sync_tools())
             if not runner.paused:
                 for item in list(runner._native_inputs):
                     item.setdefault('id', uuid.uuid4().hex)

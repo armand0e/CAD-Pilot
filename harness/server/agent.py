@@ -372,11 +372,15 @@ class AgentRunner:
                 while not queue.empty():
                     queue.get_nowait()
                 queue.put_nowait(self.snapshot())
+        observer = getattr(self, 'activity_observer', None)
+        if observer:
+            observer(event)
         if self.journal and self.journal.failed and not self._journal_warned:
             self._journal_warned = True
             self.emit({"t": "note", "message": self.journal.failed})
 
     def snapshot(self) -> dict[str, Any]:
+        from .research_progress import research_snapshot
         try:
             transcript = self.transcript.read() if self.transcript else list(self.events)
         except Exception as error:
@@ -390,6 +394,7 @@ class AgentRunner:
                 "can_continue": bool(self.task_text), "journal_warning": self.journal.failed if self.journal else None,
                 "web_enabled": self.web_enabled, "chat_protocol": 1, "image_context": self.image_context,
                 "persistence_warning": self._transcript_warning,
+                "research_agents": research_snapshot(transcript, self.active),
                 "events": list(self.events),
                 "transcript": transcript}
 

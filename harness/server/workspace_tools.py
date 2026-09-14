@@ -35,15 +35,22 @@ TOOLS = [
             'keep': {'type': 'string', 'enum': ['above','below']}}, 'required': ['axis','at'], 'additionalProperties': False}}),
     definition('spec_read', 'Read the persistent editable specification, immutable user input evidence and geometry evidence. Includes recent unaddressed corrections and stale verification. Page through older evidence with offsets. This survives Pi compaction and restarts.', {
         'input_offset':{'type':'integer','minimum':0},'evidence_offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':50}}),
-    definition('spec_update', 'Replace design-spec.json with the version from spec_read. Requirements/decisions/references have id,text,origin(user/sourced/assumed),evidence IDs,status(open/implemented/verified),features. Keep all still-applicable requirements and cite actual inputs/pages/images/measurements. File edits through Pi are also supported.', {
+    definition('spec_update', 'Patch only changed specification fields using expected_version from spec_read. Row arrays upsert by id; omitted rows/fields are preserved. New rows need id,text,origin,evidence. addressed_inputs adds linked input IDs; open_questions replaces that list. Retire a row with status=retired and retirement reason/user evidence; never delete it. verified needs a scoped verification check (measurement, visual or task); implemented does not. Full file edits through Pi remain supported with deletion protection.', {
         'expected_version': {'type': 'integer'}, 'specification': {'type': 'object', 'properties': {
             'objective': STRING, 'coordinates': STRING,
             **{k: {'type': 'array', 'items': {'type': 'object', 'properties': {
                 'id': STRING, 'text': STRING, 'origin': {'type': 'string', 'enum': ['user','sourced','assumed']},
-                'evidence': STRINGS, 'status': {'type': 'string', 'enum': ['open','implemented','verified']}, 'features': STRINGS},
-                'required': ['id','text','origin','evidence'], 'additionalProperties': False}} for k in ('requirements','decisions','references')},
+                'evidence': STRINGS, 'status': {'type': 'string', 'enum': ['open','implemented','verified','retired']}, 'features': STRINGS,
+                'verification': {'type':'object', 'properties': {
+                    'kind': {'type':'string','enum':['measurement','visual','task']},
+                    'evidence': STRING, 'field': {'type':'string', 'description':'JSON pointer selecting ONE NUMBER from cad_inspect, e.g. /objects/0/bounds_mm/2 or /contours/1/bounds/bounds_mm/0. Never select an entire bounds object or array.'},
+                    'expected': NUMBER, 'tolerance': NUMBER,
+                    'file': STRING, 'note': STRING}, 'required':['kind'], 'additionalProperties':False},
+                'retirement': {'type':'object','properties':{'reason':STRING,'evidence':STRINGS},
+                    'required':['reason','evidence'],'additionalProperties':False}},
+                'required': ['id'], 'additionalProperties': False}} for k in ('requirements','decisions','references')},
             'open_questions': STRINGS, 'addressed_inputs': STRINGS},
-            'required': ['objective','coordinates','requirements','decisions','references','open_questions','addressed_inputs'], 'additionalProperties': False}}, ('expected_version','specification')),
+            'additionalProperties': False}}, ('expected_version','specification')),
 ]
 NAMES = [t['function']['name'] for t in TOOLS]
 PI_NAMES = ['read', 'write', 'edit', 'bash']
@@ -71,6 +78,11 @@ sources and unknowns without filling your context with the whole investigation.
 Carry its useful findings into the spec, keeping uncertainty and coordinate datums.
 Use cad_inspect/cad_render for underside, sections, body isolation, actual faces,
 clearance and intersection checks. Reopen images with view_image as necessary.
+Use spec_update for small patches instead of rewriting every requirement. Retire
+superseded requirements explicitly with a reason and the correcting user input ID.
+Mark work implemented when done; use verified only for a concrete numeric check,
+visual observation or task file check described in CAD_GUIDE.md. An overview with
+context_file is a preview; Pi read can retrieve its full records without a new search.
 Measured evidence is scoped to its revision and geometric query; geometry validity
 is not proof of requested features or fit. Keep unresolved assumptions visible.
 Ask a focused question only when a new choice materially affects the result.
@@ -82,9 +94,7 @@ async def dispatch(bridge, name, args):
     runner, ctx = bridge.runner, bridge.ctx
     project = ctx['project']
     work = SourceWorkspace(project)
-    work.ensure()
-    events = runner.transcript.read() if runner.transcript else runner.events
-    work.record_inputs(events)
+    bridge.record_inputs(work)
     if name == 'create_path_body':
         body = args['name']
         if not isinstance(body, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', body) or not isinstance(args['path'], str) or len(args['path']) > 100000:
@@ -106,9 +116,10 @@ async def dispatch(bridge, name, args):
     if name == 'spec_read':
         return work.spec_context(**args)
     if name == 'spec_update':
-        value = work.update_spec(args['specification'], args['expected_version'])
+        value = work.update_spec(args['specification'], args['expected_version'], patch=True)
         runner.emit({'t': 'specification', 'project_id': project.id, 'specification': value, 'timeline': False})
-        return value
+        return {'version': value['version'], 'updated_ids': [r['id'] for key in ('requirements','decisions','references')
+                for r in args['specification'].get(key, [])], 'path': '/work/design-spec.json'}
     if name == 'cad_checkout':
         return work.checkout(ctx['expected_head'], args.get('discard_changes', False))
     if name in ('cad_inspect', 'cad_render'):
@@ -132,8 +143,8 @@ async def dispatch(bridge, name, args):
     if warning:
         runner.emit({'t': 'note', 'message': warning})
     from .agent import geometry_summary
-    return {'ok': True, 'head': saved['head'], 'geometry': geometry_summary(saved['geometry']),
-            'files': work.describe()['files'], 'specification': work.spec_context(), 'warning': warning}
+    return work.context_result('build-result', {'ok': True, 'head': saved['head'], 'geometry': geometry_summary(saved['geometry']),
+            'files': work.describe()['files'], 'specification': work.spec_context(), 'warning': warning})
 
 
 async def build_revision(session, entrypoint, expected_head, research=None):

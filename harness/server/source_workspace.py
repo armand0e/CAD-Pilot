@@ -14,10 +14,12 @@ import zipfile
 
 from .projects import ROOT, atomic_json, build_error
 from .cad_sandbox import execute
+from .specification import ROWS, merge_patch, check_verification
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_TEXT = 1024 * 1024
 RESERVED = {'design-spec.json', 'CAD_GUIDE.md', 'cad_paths.py'}
+CONTEXT_DIR = '.cadpilot-context'
 # Required software resources must not live in the persisted knowledge volume:
 # an existing Docker volume hides files added to that directory in a new image.
 SERVER = Path(__file__).resolve().parent
@@ -58,6 +60,8 @@ class SourceWorkspace:
             return result
         self.file('.')
         for root, dirs, names in os.walk(self.path, followlinks=False):
+            if Path(root) == self.path and CONTEXT_DIR in dirs:
+                dirs.remove(CONTEXT_DIR)  # Regenerable tool records are not modeling source.
             for name in dirs + names:
                 path = self.file((Path(root) / name).relative_to(self.path).as_posix())
                 if path.is_dir():
@@ -163,20 +167,23 @@ class SourceWorkspace:
 
     def record_inputs(self, events):
         self.ensure()
-        records = self.inputs()
-        known = {r['id'] for r in records}
-        for e in events:
-            if e.get('t') not in ('user', 'answer'):
-                continue
-            text = e.get('summary') or e.get('text', '')
-            if not text:
-                continue
-            identity = 'input:' + str(e.get('event_id') or digest(json.dumps(e, sort_keys=True).encode()))
-            if identity not in known:
-                records.append({'id': identity, 'text': text, 'kind': e['t'], 'question_id': e.get('question_id'),
-                                'created': e.get('ts'), 'attachments': e.get('attachments', [])})
-                known.add(identity)
-        atomic_json(self.project.path / 'input-evidence.json', records)
+        with self.project.lock():
+            records = self.inputs()
+            known = {r['id'] for r in records}
+            count = len(records)
+            for e in events:
+                if e.get('t') not in ('user', 'answer'):
+                    continue
+                text = e.get('summary') or e.get('text', '')
+                if not text:
+                    continue
+                identity = 'input:' + str(e.get('event_id') or digest(json.dumps(e, sort_keys=True).encode()))
+                if identity not in known:
+                    records.append({'id': identity, 'text': text, 'kind': e['t'], 'question_id': e.get('question_id'),
+                                    'created': e.get('ts'), 'attachments': e.get('attachments', [])})
+                    known.add(identity)
+            if len(records) != count:
+                atomic_json(self.project.path / 'input-evidence.json', records)
         value = self.spec()
         if records and not value['objective'] and not value['requirements']:
             first = records[0]
@@ -211,7 +218,7 @@ class SourceWorkspace:
     def spec(self):
         return json.loads((self.project.path / 'spec-state.json').read_text())
 
-    def validate_spec(self, value):
+    def validate_spec(self, value, current=None):
         if not isinstance(value, dict) or not isinstance(value.get('objective'), str) or not isinstance(value.get('coordinates'), str):
             raise ValueError('Specification needs objective and coordinates strings')
         from .attachments import saved_image_ids
@@ -220,10 +227,16 @@ class SourceWorkspace:
         available |= set(self.sources())
         available |= set(saved_image_ids(self.project.path))
         evidence = {r['id']: r for r in self.evidence()}
+        current = self.spec() if current is None else current
+        old_rows = {r['id']: r for key in ROWS for r in current[key]}
         seen = set()
+        verification_errors = []
         for key in ('requirements', 'decisions', 'references', 'open_questions', 'addressed_inputs'):
             if not isinstance(value.get(key), list):
                 raise ValueError(f'Specification {key} must be an array')
+        for key in ('open_questions', 'addressed_inputs'):
+            if any(not isinstance(i, str) for i in value[key]):
+                raise ValueError(f'Specification {key} entries must be strings')
         for row in value['requirements'] + value['decisions'] + value['references']:
             if not isinstance(row, dict) or not isinstance(row.get('id'), str) or not row['id'] or row['id'] in seen or not isinstance(row.get('text'), str):
                 raise ValueError('Requirements, decisions and reference observations need unique IDs and text')
@@ -237,24 +250,62 @@ class SourceWorkspace:
                 raise ValueError('User decisions require an actual user input evidence ID')
             if row['origin'] == 'sourced' and not any(not i.startswith(('input:', 'measure:')) for i in ids):
                 raise ValueError('Sourced requirements require an opened page or saved image ID')
-            if row.get('status', 'open') not in ('open', 'implemented', 'verified'):
-                raise ValueError('Requirement status is open, implemented or verified')
+            if row.get('status', 'open') not in ('open', 'implemented', 'verified', 'retired'):
+                raise ValueError('Requirement status is open, implemented, verified or retired')
             if not isinstance(row.get('features', []), list) or any(not isinstance(f, str) for f in row.get('features', [])):
                 raise ValueError('Feature links must be an array of body/face names')
-            if row.get('status') == 'verified' and not any(i in evidence and evidence[i].get('revision') == self.project.read()['head'] for i in ids):
-                raise ValueError('Verified status needs recorded geometry evidence for the current revision')
+            if 'retirement' in row and not isinstance(row['retirement'], dict):
+                raise ValueError('Retirement needs a reason and user evidence')
+            if 'retirement' in row and (not isinstance(row['retirement'].get('evidence', []), list) or
+                    any(not isinstance(i, str) for i in row['retirement'].get('evidence', []))):
+                raise ValueError('Retirement evidence must be user input IDs')
+            if row.get('status') == 'retired':
+                retirement = row.get('retirement', {})
+                refs = retirement.get('evidence', []) if isinstance(retirement, dict) else []
+                if not isinstance(retirement, dict) or not isinstance(retirement.get('reason'), str) or not retirement['reason'].strip() or not isinstance(refs, list) or not refs or any(not isinstance(i, str) or not i.startswith('input:') or i not in available for i in refs):
+                    raise ValueError('Retiring a requirement needs a reason and actual user input evidence IDs')
+            if row.get('status') == 'verified' and row != old_rows.get(row['id']):
+                check = row.get('verification')
+                if isinstance(check, dict) and check.get('kind') == 'task':
+                    target = self.file(check.get('file', ''))
+                    if target.is_file():
+                        check['sha256'] = digest(target.read_bytes())
+                try:
+                    verified = check_verification(row, evidence, self.project.read()['head'], self.file)
+                    # The check already names its evidence/geometry. Store those
+                    # links instead of making the model repeat them perfectly.
+                    if verified['kind'] != 'task':
+                        row['evidence'] = list(dict.fromkeys(ids + [check['evidence']]))
+                    if verified.get('subjects') and not row.get('features'):
+                        row['features'] = verified['subjects']
+                except ValueError as error:
+                    verification_errors.append(row['id'] + ': ' + str(error))
+        if verification_errors:
+            raise ValueError('Verification checks need correction. ' + ' | '.join(verification_errors))
+        missing = set(old_rows) - seen
+        if missing:
+            raise ValueError('Do not remove specification IDs: ' + ', '.join(sorted(missing)) + '. Keep them with status=retired, a reason and user evidence.')
         if any(i not in {r['id'] for r in self.inputs()} for i in value['addressed_inputs']):
             raise ValueError('addressed_inputs must reference recorded user input IDs')
+        linked = {i for key in ROWS for row in value[key] for i in row.get('evidence', [])}
+        linked |= {i for key in ROWS for row in current[key] for i in row.get('evidence', [])}
+        linked |= {i for key in ROWS for row in value[key] for i in row.get('retirement', {}).get('evidence', [])}
+        if set(value['addressed_inputs']) - set(current['addressed_inputs']) - linked:
+            raise ValueError('Link newly addressed inputs to a requirement, decision, reference or retirement first')
         if len(json.dumps(value).encode()) > MAX_TEXT:
             raise ValueError('Specification exceeds 1 MiB')
         return value
 
-    def update_spec(self, value, expected_version):
-        self.validate_spec(value)
+    def update_spec(self, value, expected_version, *, patch=False):
         with self.project.lock():
             current = self.spec()
-            if expected_version != current['version']:
+            if type(expected_version) is not int or expected_version != current['version']:
                 raise ValueError('Specification changed; read it again before editing')
+            if patch:
+                value = merge_patch(current, value)
+            self.validate_spec(value, current)
+            if value == current:
+                return current
             value = {**value, 'version': current['version'] + 1}
             directory = self.project.path / 'spec-history'
             directory.mkdir(exist_ok=True, mode=0o700)
@@ -278,22 +329,65 @@ class SourceWorkspace:
         summaries = [{k:v for k,v in e.items() if k in ('id','revision','query','object','a','b','minimum_distance_mm',
                       'intersection_volume_mm3','axis','at_mm','image')} for e in evidence]
         specification = value if len(json.dumps(value)) <= 24000 else {
-            'version': value['version'], 'objective': value['objective'], 'path': '/work/design-spec.json',
+            'version': value['version'], 'objective': value['objective'][:1200], 'path': '/work/design-spec.json',
             'notice': 'Read the complete specification with Pi read (offset/limit); it is too large for this overview.'}
-        return {'specification': specification, 'pending_inputs': pending[-limit:], 'pending_input_count': len(pending),
+        checks = {}
+        evidence_by_id, head = {e['id']: e for e in evidence}, self.project.read()['head']
+        for key in ROWS:
+            for row in value[key]:
+                if row.get('status') == 'verified':
+                    try:
+                        checks[row['id']] = {'valid': True, **check_verification(row, evidence_by_id, head, self.file)}
+                    except ValueError as error:
+                        checks[row['id']] = {'valid': False, 'reason': str(error)}
+        return self.context_result('spec-context', {'specification': specification, 'pending_inputs': pending[-limit:], 'pending_input_count': len(pending),
                 'input_evidence': inputs[input_offset:input_offset+limit], 'inspection_evidence': summaries[evidence_offset:evidence_offset+limit],
                 'input_count': len(inputs), 'evidence_count': len(evidence),
                 'next_input_offset': input_offset+limit if input_offset+limit < len(inputs) else None,
                 'next_evidence_offset': evidence_offset+limit if evidence_offset+limit < len(evidence) else None,
                 'source_ids': [{'id':s['id'], 'title':s.get('title'), 'url':s.get('url')} for s in self.sources().values()],
-                'verification_notice': 'Evidence is revision-specific; verified claims become stale after rebuilding.',
-                'stale_requirements': [r['id'] for r in value['requirements'] if r.get('status') == 'verified' and
-                    not any(e['id'] in r.get('evidence', []) and e.get('revision') == self.project.read()['head'] for e in evidence)]}
+                'verification_notice': 'Measurement and visual checks belong to a revision; task checks belong to a file hash. Legacy unchecked claims need re-verification.',
+                'verification_checks': checks, 'stale_requirements': [key for key, check in checks.items() if not check['valid']]})
+
+    def context_result(self, name, value, limit=24000):
+        """Bound model-facing JSON, keeping complete records readable with Pi."""
+        if len(json.dumps(value)) <= limit:
+            return value
+        path = self.file(CONTEXT_DIR + '/' + name + '.json')
+        path.parent.mkdir(exist_ok=True)
+        data = json.dumps(value, indent=2, ensure_ascii=True)
+        if not path.exists() or path.read_text() != data:
+            # This is a disposable projection, never authoritative evidence.
+            fd, pending = tempfile.mkstemp(dir=path.parent, prefix='.context-')
+            try:
+                with os.fdopen(fd, 'w') as output:
+                    output.write(data)
+                os.replace(pending, path)
+            finally:
+                Path(pending).unlink(missing_ok=True)
+        def preview(item, width, depth=0):
+            if isinstance(item, str):
+                return item if len(item) <= width else item[:width] + '… [preview]'
+            if isinstance(item, (list, dict)) and depth > 5:
+                return {'notice': 'Read context_file for this collection', 'count': len(item)}
+            if isinstance(item, list):
+                return [preview(x, width, depth+1) for x in item[:5]] + ([{'omitted_items': len(item)-5}] if len(item)>5 else [])
+            if isinstance(item, dict):
+                return {k: preview(v, width, depth+1) for k,v in list(item.items())[:40]}
+            return item
+        for width in (800, 200, 40):
+            result = {'preview': preview(value, width), 'context_file': '/work/' + str(path.relative_to(self.path)),
+                      'notice': 'Overview truncated. Read context_file with Pi read offset/limit for complete records; do not treat abbreviated values as exact evidence.'}
+            if len(json.dumps(result)) <= limit:
+                return result
+        return {k:v for k,v in result.items() if k != 'preview'}
 
     def describe(self):
         self.ensure()
-        return {'root': '/work', **self.state(), 'files': self.files(), 'dirty': self.dirty(),
-                'current_head': self.project.read()['head'], 'specification': self.spec(),
+        state, files = self.state(), self.files()
+        return {'root': '/work', 'base_head': state.get('base_head'), 'source_mode': state.get('source_mode', False),
+                'files': files, 'dirty': {f['path']: f['sha256'] for f in files if f['path'] not in RESERVED} != state.get('baseline', {}),
+                'current_head': self.project.read()['head'], 'specification_path': '/work/design-spec.json', 'specification_version': self.spec()['version'],
                 'help': 'Read CAD_GUIDE.md; edit model.py/model.scad, then cad_build. Use cad_checkout after restoring or changing the project base.'}
 
     async def fs(self, args):

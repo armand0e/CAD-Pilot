@@ -1,5 +1,6 @@
 """A separate Pi session investigates dimensions and returns only cited findings."""
 import copy
+import asyncio
 import json
 import math
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ from .attachments import image_path, store_image
 from .projects import Project, atomic_json
 from .research import validate_notes
 from .workspace_tools import definition, STRING, STRINGS
+from .research_progress import ResearchProgress
 
 RESEARCH_TOOLS = {'research', 'research_images', 'view_image', 'recall_facts', 'design_notes', 'inspect', 'submit_research'}
 DELEGATE = definition('research_dimensions', 'Delegate missing product dimensions to an isolated Pi research agent. Give an exact part identity, dimensions to investigate and relevant context/reference IDs. It reads primary documentation, examines references and returns a compact cited report with unknowns; its full investigation stays outside this conversation. It cannot edit CAD.', {
@@ -104,25 +106,35 @@ async def investigate(parent, args):
     child.task_text=prompt
     child.emit({'t':'user','text':prompt,'new_task':True})
     child._native_inputs=[{'role':'user','content':prompt,'attachments':[i['research_image_id'] for i in reference_map]}]
-    parent.emit({'t':'note','message':f'Dimension researcher started for {args["part_identity"]}. Its investigation has a separate conversation.'})
+    progress = ResearchProgress(parent, project, args)
+    child.activity_observer = progress.consume
     try:
         await child._native_model(prompt)
-    finally:
+        child.activity_observer = None
         await child.wait_stopped()
-    result=child.dimension_report or {'status':'incomplete','summary':'The researcher stopped without a documented report.',
-                                    'dimensions':[],'unknowns':dimensions,'sources':[]}
-    result={**result,'investigation_id':project.id,
-            'transcript_url':f'/api/projects/{parent.session.project.id}/investigations/{project.id}'}
-    if child.dimension_report:
-        sources={s['id']:s for s in parent.research['sources']}
-        sources.update({s['id']:s for s in result['sources']})
-        parent.research['sources']=list(sources.values())
-        for fact in result['notes']['facts']:
-            if fact not in parent.research['notes']['facts']:
-                parent.research['notes']['facts'].append(fact)
-        for field in ('assumptions','unknowns'):
-            parent.research['notes'][field]=list(dict.fromkeys(parent.research['notes'][field]+result['notes'][field]))
-        parent._save_conversation()
-    atomic_json(project.path/'dimension-report.json',result)
-    parent.emit({'t':'note','message':f'Dimension researcher returned {len(result["dimensions"])} documented dimension(s), with {len(result["unknowns"])} unresolved item(s).'})
-    return result
+        result=child.dimension_report or {'status':'incomplete','summary':'The researcher stopped without a documented report.',
+                                        'dimensions':[],'unknowns':dimensions,'sources':[]}
+        result={**result,'investigation_id':project.id,
+                'transcript_url':f'/api/projects/{parent.session.project.id}/investigations/{project.id}'}
+        if child.dimension_report:
+            sources={s['id']:s for s in parent.research['sources']}
+            sources.update({s['id']:s for s in result['sources']})
+            parent.research['sources']=list(sources.values())
+            for fact in result['notes']['facts']:
+                if fact not in parent.research['notes']['facts']:
+                    parent.research['notes']['facts'].append(fact)
+            for field in ('assumptions','unknowns'):
+                parent.research['notes'][field]=list(dict.fromkeys(parent.research['notes'][field]+result['notes'][field]))
+            parent._save_conversation()
+        atomic_json(project.path/'dimension-report.json',result)
+        progress.finish('completed' if child.dimension_report else 'failed' if progress.error else 'incomplete', result)
+        return result
+    except asyncio.CancelledError:
+        progress.finish('cancelled')
+        raise
+    except Exception:
+        progress.finish('failed')
+        raise
+    finally:
+        child.activity_observer = None
+        await child.wait_stopped()

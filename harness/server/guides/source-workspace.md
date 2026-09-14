@@ -99,10 +99,40 @@ source IDs must refer to opened research pages, image IDs to actual saved images
 Reference observations can include crop image IDs, orientation and what is visible.
 An image without a scale does not establish precise dimensions.
 
-Use spec_update with the version from spec_read, or edit design-spec.json using
-Pi's file tools. Updates validate and are archived separately from the conversation.
-Only recorded CAD inspection evidence can support verified status, and it must
-match the current revision. Verification applies to the measurement stated by that
-evidence; don't claim the whole design fits because a solid is valid. A rebuild
-makes previous verification stale. Keep open questions/assumptions visible. User
-corrections remain in the input evidence ledger even if you revise the spec.
+Use spec_update with expected_version from spec_read and only the fields being
+changed. Row arrays upsert by id; omitted rows and fields remain unchanged. For
+example, specification={requirements:[{id:"wall",text:"Wall thickness 3 mm",
+status:"implemented",evidence:["input:actual-correction-id"]}]} changes only that
+requirement. New rows need id/text/origin/evidence. addressed_inputs adds IDs and
+each new ID must be linked to a row. open_questions explicitly replaces that list.
+To retire a superseded requirement, keep its row with status="retired" and
+retirement={reason:"User changed the connector",evidence:["input:actual-id"]}.
+Direct Pi edits of design-spec.json still work, with version and deletion checks.
+
+Implemented means the work is done; do not spend turns verifying bookkeeping.
+For verified status, add a verification object with one of these scoped checks:
+- Measurement: {kind:"measurement",evidence:"measure:actual-id",
+  field:"/objects/0/bounds_mm/2",expected:8,tolerance:0.01}. field is a JSON pointer
+  into cad_inspect's result and must select a single number, e.g. a section's
+  /contours/1/bounds/bounds_mm/0. CADPilot saves the check's evidence link and
+  fills missing features from the inspected body. Use actual body/face names for
+  explicit feature links. The numeric comparison must actually pass.
+- Visual: {kind:"visual",evidence:"measure:actual-render-id",note:"Observed ..."}.
+  This records a visual observation, not measured dimensions or mechanical fit.
+- Task: {kind:"task",file:"model.py"}. This confirms the file exists and records
+  its hash; it does not certify the meaning or correctness of the file contents.
+
+The chosen check must support the stated requirement; matching an unrelated
+number does not establish fit. A check verifies its selected value, not every
+claim in a paragraph; use separate requirements for independent checks.
+Measurement/visual checks become stale after a
+rebuild; task checks become stale when their file changes. Legacy verified rows
+without a check remain saved but are reported as unverified. Unchanged stale rows
+do not block unrelated edits. Updates are archived independently of conversation.
+
+inspect/spec_read return bounded overviews. If a result has context_file, read
+that file using Pi read offset/limit for complete records. These regenerable
+.cadpilot-context files are excluded from modeling source and dirty checks.
+The complete specification remains in design-spec.json. Saved research overview
+contains source links and extracted notes, not every full page; reopen a source
+with research when needed. User corrections remain in the input evidence ledger.

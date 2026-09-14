@@ -1057,6 +1057,9 @@ TOOL_DESCRIPTIONS = {
     'review': 'Request an independent advisory review of the saved model against the request and brief; returns status and issues.',
 }
 PUBLIC_TOOLS = [t for t in TOOL_DESCRIPTIONS]
+SOURCE_INCOMPATIBLE_TOOLS = GEOMETRY_TOOLS | {
+    'set_parameter', 'define_parameter', 'define_datum', 'edit_operation', 'delete_operation', 'replace_operation',
+}
 
 
 def _merge_variant_properties(tool):

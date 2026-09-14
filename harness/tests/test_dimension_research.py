@@ -54,6 +54,8 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(child.research_profile)
             child.research['sources']=[self.source]
             child.execution_feedback={'sources':[self.source]}
+            child.emit({'t':'research_start','operation':'read','query':objective})
+            child.emit({'t':'research_result','sources':[self.source]})
         with patch.object(AgentRunner,'_research_step',research),pi_model(self.runner,reply):
             self.runner.start('Model the fixture board case','auto')
             async with asyncio.timeout(25):
@@ -75,6 +77,14 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
         displayed=[e for e in self.runner.transcript.read() if e['t']=='research_result']
         self.assertEqual(displayed[-1]['sources'][0]['id'],'web_fixture')
         self.assertNotIn('PRIVATE_FULL_INVESTIGATION',str(displayed))
+        progress=[e for e in self.runner.transcript.read() if e['t']=='research_agent']
+        self.assertEqual(progress[0]['status'],'running')
+        self.assertEqual(progress[-1]['status'],'completed')
+        self.assertEqual(progress[-1]['documented_dimensions'],1)
+        self.assertEqual(progress[-1]['pages_read'],1)
+        self.assertTrue(any(e['activity']=='Reading a source' for e in progress))
+        self.assertNotIn('PRIVATE_FULL_INVESTIGATION',str(progress))
+        self.assertEqual(self.runner.snapshot()['research_agents'][-1]['status'],'completed')
         from fastapi.testclient import TestClient
         from server.app import app
         with patch('server.app._project',return_value=self.project):
@@ -89,3 +99,34 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
         self.runner.web_enabled=False
         with self.assertRaisesRegex(ValueError,'disabled'):
             await investigate(self.runner,{'part_identity':'fixture','dimensions':['length']})
+
+    async def test_cancelled_child_is_stopped_and_sidebar_stays_stopped(self):
+        entered=asyncio.Event()
+        async def blocked(child,*args):
+            child.emit({'t':'thinking_start'})
+            entered.set()
+            await asyncio.Event().wait()
+        with patch.object(AgentRunner,'_native_model',blocked):
+            task=asyncio.create_task(investigate(self.runner,{'part_identity':'fixture','dimensions':['length']}))
+            await entered.wait();task.cancel()
+            with self.assertRaises(asyncio.CancelledError):await task
+        progress=self.runner.snapshot()['research_agents']
+        self.assertEqual(progress[-1]['status'],'cancelled')
+        self.assertIn('finished_at',progress[-1])
+
+    async def test_failed_and_interrupted_research_are_not_shown_as_running(self):
+        async def fail(*args):raise RuntimeError('Fixture model unavailable')
+        with patch.object(AgentRunner,'_native_model',fail):
+            with self.assertRaises(RuntimeError):
+                await investigate(self.runner,{'part_identity':'fixture','dimensions':['length']})
+        self.assertEqual(self.runner.snapshot()['research_agents'][-1]['status'],'failed')
+        self.runner.emit({'t':'research_agent','agent_id':'interrupted','status':'running','activity':'Reading','started_at':1})
+        self.assertEqual(self.runner.snapshot()['research_agents'][-1]['status'],'interrupted')
+
+    async def test_report_save_failure_settles_research_card(self):
+        async def finish(*args):return None
+        with patch.object(AgentRunner,'_native_model',finish), \
+             patch('server.dimension_research.atomic_json',side_effect=OSError('Fixture disk failure')):
+            with self.assertRaises(OSError):
+                await investigate(self.runner,{'part_identity':'fixture','dimensions':['length']})
+        self.assertEqual(self.runner.snapshot()['research_agents'][-1]['status'],'failed')

@@ -170,6 +170,12 @@ parts={"Case":case,"Lid":lid}
         measure=await self.work.inspect(head,{'query':'measure','a':'Case','b':'Lid'})
         self.assertAlmostEqual(measure['minimum_distance_mm'],3,places=5)
         self.assertEqual(measure['intersection_volume_mm3'],0)
+        self.work.record_inputs([{'t':'user','event_id':'gap','text':'Keep a 3 mm gap between Case and Lid.'}])
+        spec=self.work.update_spec({'requirements':[{'id':'initial-request','status':'verified','features':['Case','Lid'],
+            'evidence':['input:gap',measure['id']], 'verification':{'kind':'measurement','evidence':measure['id'],
+                'field':'/minimum_distance_mm','expected':3,'tolerance':.00001}}]}, self.work.spec()['version'], patch=True)
+        self.assertEqual(spec['requirements'][0]['status'],'verified')
+        self.assertAlmostEqual(self.work.spec_context()['verification_checks']['initial-request']['actual'],3,places=5)
         section=await self.work.inspect(head,{'query':'section','object':'Case','axis':'z','at':4})
         self.assertEqual(len(section['contours']),2)
         faces=await self.work.inspect(head,{'query':'faces','object':'Case','offset':1,'limit':2})
