@@ -5,6 +5,7 @@ model or the browser as-is.
 """
 import hashlib
 import io
+import json
 import re
 from pathlib import Path
 
@@ -108,5 +109,20 @@ def inspect_image(project_path, name, crop=None):
     buffer = io.BytesIO()
     image.save(buffer, 'PNG')
     stored = store_image(Path(project_path) / 'research-images', buffer.getvalue(), label=f'Inspection of {name}; crop={crop}')
+    provenance = image_provenance(project_path, name)
+    if crop:
+        provenance = {**provenance, 'crops': provenance['crops'] + [list(crop)]}
+    if stored['id'] != name:
+        from .projects import atomic_json
+        atomic_json(Path(project_path) / 'research-images' / (stored['id'] + '.provenance.json'), provenance)
     return stored | {'path': str(image_path(project_path, stored['id'])), 'source_id': name,
-                     'original_width': width, 'original_height': height}
+                     'original_width': width, 'original_height': height, 'provenance': provenance}
+
+
+def image_provenance(project_path, name):
+    """Keep crop coordinates relative to each preceding image, through restarts."""
+    path = image_path(project_path, name)
+    metadata = path.with_name(path.name + '.provenance.json')
+    if metadata.is_file() and not metadata.is_symlink():
+        return json.loads(metadata.read_text())
+    return {'original_image_id': name, 'crops': []}

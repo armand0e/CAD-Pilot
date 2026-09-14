@@ -118,7 +118,7 @@ export class ResearchCard {
     if(follow)pane.scrollTop=pane.scrollHeight;
 
     card.documented.hidden=event.status==='running'||!Number.isInteger(event.documented_dimensions);
-    setText(card.documented,`${count(event.documented_dimensions,'dimension')} documented`);
+    setText(card.documented,`${count(event.documented_dimensions,'dimension')} cited from text${event.visual_dimensions?` · ${count(event.visual_dimensions,'drawing reading')} to confirm`:''}`);
     setText(card.outcome,event.summary||(event.status==='running'?'Findings will appear here when the investigation finishes.':event.status==='completed'?'The investigation has finished.':event.status==='incomplete'?'The investigation finished with unresolved questions.':'The investigation ended before final findings were returned.'));
     const unknownKey=JSON.stringify(event.unknowns||[]);
     if(unknownKey!==this.unknownKey){this.unknownKey=unknownKey;card.unknowns.replaceChildren(...(event.unknowns||[]).map(text=>element('li','',text)));}

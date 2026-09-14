@@ -230,6 +230,12 @@ There is no custom native context compactor or secondary native agent loop.
   document links. Pi reads this evidence directly; the legacy per-page extraction
   model call is skipped. Child researchers return cited findings and explicit gaps
   once the requested dimensions are covered or available documentation is exhausted.
+- Research reports accept multiple measurements per requested category. Text quotes
+  are checked against opened pages; drawing labels use image/page/crop citations and
+  stay marked as visual readings to confirm. Unsupported rows return as explicit gaps
+  alongside the supported findings, without requiring another full report submission.
+  Cited drawings remain available to the modeler through `view_image`. Tool validation
+  failures appear in the research card instead of being hidden by a generic wait status.
 - `spec_update` patches rows by ID. Removing a requirement requires retaining a
   retired row with its reason and user evidence. Verification records distinguish
   numeric CAD comparisons, visual observations, and file existence/hash checks;

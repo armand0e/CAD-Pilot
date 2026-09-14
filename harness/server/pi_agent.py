@@ -155,6 +155,8 @@ class PiBridge:
     def active_names(self):
         names = [t['function']['name'] for t in self.runner._tool_definitions()]
         if getattr(self.runner, 'research_profile', False):
+            if getattr(self.runner, 'dimension_report', None):
+                return []  # Pi finishes the response after the terminal report tool.
             return [n for n in names if n in RESEARCH_TOOLS] + ['submit_research']
         if (self.ctx.get('saved', {}).get('design') or {}).get('format') == 'source-v1':
             from .operations import SOURCE_INCOMPATIBLE_TOOLS
@@ -425,7 +427,11 @@ class PiBridge:
                 raise asyncio.CancelledError
             if getattr(runner, 'research_profile', False) and message['name'] not in RESEARCH_TOOLS:
                 raise ValueError('The dimension researcher has read-only research tools; CAD and workspace edits are unavailable')
-            if message['name'] == 'inspect':
+            if getattr(runner, 'research_profile', False) and getattr(runner, 'dimension_report', None):
+                # A model may have queued another call in the submission batch.
+                # The saved report is final; do not restart research or overwrite it.
+                content = [{'type':'text','text':'The research report is already saved. No further research was executed. Finish the response.'}]
+            elif message['name'] == 'inspect':
                 content = [{'type': 'text', 'text': json.dumps(self.inspect())}] + self.views()
             elif message['name'] == 'submit_research' and getattr(runner, 'research_profile', False):
                 content = [{'type': 'text', 'text': json.dumps(submit(runner, message['arguments']))}]

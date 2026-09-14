@@ -295,7 +295,7 @@ class AgentRunner:
                 self.web_enabled = saved.get('web_enabled', True) is True and self.research_tool.enabled
                 if isinstance(saved.get('research'), dict):
                     candidate = saved['research']
-                    validate_notes(candidate['notes'], candidate['sources'])
+                    validate_notes(candidate['notes'], candidate['sources'], max_entries=None)
                     self.research = candidate
             except (ValueError, KeyError, TypeError):
                 pass
@@ -1080,7 +1080,7 @@ class AgentRunner:
         # right after a lookup; afterwards the extracted notes carry the evidence.
         recent = [s['id'] for s in self.research['sources'] if s['kind'] != 'search_result'][-1:] if pages else []
         return {'notes': self.research['notes'], 'sources': [
-            {k: v for k, v in s.items() if k in ('id', 'url', 'title', 'kind', 'engine', 'opened')} |
+            {k: v for k, v in s.items() if k in ('id', 'url', 'title', 'kind', 'engine', 'opened', 'images')} |
             {'text': s['text'][:7000] if s['id'] in recent else s['text'][:600] if s['kind'] == 'search_result' else '[Page text omitted; its supporting quotes are in notes. Read this URL again to inspect it.]'}
             for s in self.research['sources']]}
 
@@ -1211,8 +1211,11 @@ class AgentRunner:
                 stored = store_image(project.path / 'research-images', page['jpeg'], f"page {page['page']} of {source['title'] if source else 'pdf'}", max_side=1400)
             except ValueError:
                 continue
+            if source:
+                source.setdefault('images', []).append({'id': stored['id'], 'page': page['page'], 'label': stored['label']})
             self.pending_images = (self.pending_images + [{'id': stored['id'], 'path': str(project.path / 'research-images' / stored['id']),
-                                                            'label': stored['label'], 'url': source['url'] if source else None}])[-4:]
+                                                            'label': stored['label'], 'url': source['url'] if source else None,
+                                                            'document_source_id': source['id'] if source else None, 'page': page['page']}])[-4:]
         if self.pending_images:
             self.emit({'t': 'note', 'message': f"{min(len(pages), 2)} drawing page image(s) attached for the next modeling turn."})
 
@@ -1237,6 +1240,7 @@ class AgentRunner:
                                                                     'label': f"reference image: {picture['title'] or query} ({picture['url']})", 'url': picture['url']}])[-4:]
                     source_entry = {'id': 'img_' + stored['id'][:12], 'url': picture['url'], 'domain': urlsplit(picture['url']).hostname, 'title': picture['title'] or query,
                                     'kind': 'image', 'opened': True, 'text': picture['title'] or query, 'snippet': picture['title'] or query,
+                                    'images': [{'id': stored['id'], 'label': stored['label']}],
                                     'preview': f'/api/projects/{project.id}/images/{stored["id"]}', 'retrieved_at': time.time()}
                     sources.append(source_entry)
             self.research['sources'] = (self.research['sources'] + sources)[-40:]

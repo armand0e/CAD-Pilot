@@ -343,14 +343,14 @@ NOTES_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['f
         'unknowns': {'type': 'array', 'maxItems': 12, 'items': {'type': 'string'}}}}
 
 
-def validate_notes(value, sources):
+def validate_notes(value, sources, *, max_entries=12):
     if not isinstance(value, dict) or set(value) != {'facts', 'assumptions', 'unknowns'}:
         raise ResearchError('Return exactly facts, assumptions, unknowns')
     known = {s['id']: s for s in sources if s['kind'] in ('page', 'pdf')}
     normalize = lambda text: ' '.join(text.split())
     for field in value:
-        if not isinstance(value[field], list) or len(value[field]) > 12:
-            raise ResearchError('At most 12 entries per research notes field')
+        if not isinstance(value[field], list) or (max_entries is not None and len(value[field]) > max_entries):
+            raise ResearchError(f'Research notes fields must be lists with at most {max_entries} entries')
     for fact in value['facts']:
         if not isinstance(fact, dict) or set(fact) != {'statement', 'source_id', 'quote'}:
             raise ResearchError('Each fact needs statement, source_id and an exact supporting quote')
