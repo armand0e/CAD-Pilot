@@ -177,3 +177,9 @@
   .activity-dots i {opacity:.6}
 }
 [data-motion="reduced"] *,[data-motion="reduced"] *:before,[data-motion="reduced"] *:after {animation:none!important;transition:none!important;scroll-behavior:auto!important}
+
+/* Pictures a tool returned to the model: inline thumbnails, full size in a new tab. */
+.activity-images {display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.activity-image {display:block;border:1px solid var(--hairline2);border-radius:var(--r-sm);overflow:hidden;background:var(--surface-inset);max-width:100%}
+.activity-image img {display:block;width:168px;max-width:100%;height:auto;aspect-ratio:1;object-fit:cover}
+.activity-image:hover {border-color:var(--accent)}

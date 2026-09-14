@@ -188,7 +188,7 @@ class Project:
             if design.get('format') == 'source-v1':
                 entry['compiler'] = 'source-cad-v1'
                 entry['compiler_sha256'].update({name: hashlib.sha256((ROOT / 'server' / name).read_bytes()).hexdigest()
-                                                for name in ('source_program.py', 'source_kernel.py', 'cad_paths.py')})
+                                                for name in ('source_program.py', 'source_kernel.py', 'cad_paths.py', 'svg_path.py')})
             if restored_from:
                 original = next(r for r in metadata['revisions'] if r['id'] == restored_from)
                 entry['compiler'] = original.get('compiler', 'legacy-native-csg')

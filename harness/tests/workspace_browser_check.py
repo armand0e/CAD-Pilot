@@ -30,7 +30,9 @@ def run(base):
             path = route.request.url.split('/api/', 1)[1]
             if route.request.method != 'GET':
                 requests.append({'path': path, 'body': route.request.post_data_json})
-            if path == 'status':
+            if path == 'auth/session':
+                data = {'enabled': False, 'authenticated': True, 'username': None, 'registration': False, 'deployment': 'standalone'}
+            elif path == 'status':
                 data = {'missing_tools': [], 'sessions': sessions, 'policy': {'ok': True}, 'planner': {'ok': True},
                         'research': {'enabled': True}, 'supervision': {'native_operations': True}}
             elif path == 'apps': data = {'apps': apps}

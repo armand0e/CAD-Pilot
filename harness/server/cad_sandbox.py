@@ -24,7 +24,7 @@ async def execute(directory, command, *, timeout=None, helpers=()):
             '--setenv', 'PYTHONHOME', '/opt/cad/usr', '--setenv', 'PYTHONPATH', '/opt/cad/usr/lib:/']
     for name in helpers:
         args += ['--ro-bind', str(ROOT / 'server' / name), '/' + name]
-    args += ['--ro-bind', str(ROOT / 'server/cad_paths.py'), '/cad_paths.py']
+    args += ['--ro-bind', str(ROOT / 'server/cad_paths.py'), '/cad_paths.py', '--ro-bind', str(ROOT / 'server/svg_path.py'), '/svg_path.py']
     scad = ROOT / 'apps/openscad-extracted'
     if (scad / 'AppRun').is_file():
         args += ['--ro-bind', str(scad), '/opt/scad']

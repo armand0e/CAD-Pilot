@@ -228,14 +228,53 @@ There is no custom native context compactor or secondary native agent loop.
   parameter operations immediately. Existing operation-based projects retain them.
 - Pi research tool results include the returned URLs, source IDs, page text and
   document links. Pi reads this evidence directly; the legacy per-page extraction
-  model call is skipped. Child researchers return cited findings and explicit gaps
-  once the requested dimensions are covered or available documentation is exhausted.
-- Research reports accept multiple measurements per requested category. Text quotes
-  are checked against opened pages; drawing labels use image/page/crop citations and
-  stay marked as visual readings to confirm. Unsupported rows return as explicit gaps
-  alongside the supported findings, without requiring another full report submission.
-  Cited drawings remain available to the modeler through `view_image`. Tool validation
-  failures appear in the research card instead of being hidden by a generic wait status.
+  model call is skipped. The parent keeps up to 80 sources and trims search leads
+  before opened pages, so cited facts keep their sources.
+- `research_dimensions` starts an isolated researcher (its own Pi session and Node
+  process) with five tools: `web_search` (8 leads with short snippets), `web_read`
+  (one part of a document per call, `focus` for relevant passages, `part=N` to page,
+  `pages=[a,b]` to render up to four PDF pages as images), `view_image` (crop rendered
+  pages), `web_images` (labelled photos/diagrams to tell which feature is which; never
+  evidence for a dimension) and `submit_research`. The card's **Stop research** button
+  cancels the child; the modeler's tool call returns an error saying the user stopped it. Read-only tools run in parallel; the child works under a
+  call and time budget (`research.max_investigation_calls`, default 30;
+  `research.max_investigation_seconds`, default 1080) and gets budget reminders in its
+  tool results plus a steered "report now" message when about 30% of either budget is
+  left, and a four-minute grace period for the report once the budget is spent. Full
+  document text and PDFs stay on disk in the investigation folder, so quotes are
+  checked against the whole document rather than the last excerpt. Unsupported rows
+  get one correction round; the saved report ends the child run without an extra model
+  turn. The parent receives one compact report (each finding once, cited sources only);
+  facts, drawing readings and unknowns merge into the project's research notes. If the
+  child never reports, the parent still receives the documents it opened and their
+  rendered drawing pages (copied into the project for `view_image`). Several
+  delegations can run in the same turn. The parent's own `research` search returns ten
+  leads with 500-character snippets, and its URL reads go through the same document
+  reader (`research-docs/` in the project): one part per call, `focus`, `part=N` and
+  `pages=[a,b]` for PDF pages, which also appear inline in the chat.
+- The research card shows an explicit activity trail (searched, read, rendered pages,
+  submitted findings), a transient live status line that is not saved to history,
+  cumulative sources (Found / Read / Cited) and a Findings table of documented values
+  with datums, evidence tags and source links. Tool validation failures appear in the
+  card instead of being hidden by a generic wait status.
+- `ask_question` is the only question tool offered to Pi. While a question is open, a
+  message typed in the composer answers it (the model is blocked inside its question,
+  so steering could not reach it). The card selects an option on the first click and
+  sends on the second click or Send, with an optional note; digits 1-6 select options.
+- Tool results that carry a picture (`cad_render`, `view_image`, `path_preview`,
+  `research_images`) show the picture inline in the chat timeline.
+- `path_preview` checks an SVG path outline without a build (bounds, area, holes,
+  self-intersections, unclosed subpaths) and attaches a rendered picture with a
+  millimetre grid. `cad_paths` provides generators (`rect`, `circle`, `ellipse`, `slot`,
+  `polygon`, `hexagon`, `d_shape`, `outline`, `with_holes`) and `extrude`, `revolve`,
+  `loft`, `pipe` and `cut_through`; `create_path_body` validates the outline and also
+  writes an SVG that OpenSCAD can `import()`. `cad_paths.scad` (supplied in /work)
+  gives OpenSCAD the 2D modules `rounded_rect`, `slot`, `polygon_n`, `hexagon`,
+  `d_shape`, `svg_outline` and a convex `loft2`.
+- Live scenarios: `harness/tests/live_scenarios_check.py plate pizero` drives a running
+  workspace (set `CADPILOT_BASE`, and `CADPILOT_PASSWORD_FILE` for Docker) and grades
+  the outcome; evidence lands in `runs/harness-checks/live-*/`. It needs the model
+  server and takes 5-40 minutes per scenario.
 - `spec_update` patches rows by ID. Removing a requirement requires retaining a
   retired row with its reason and user evidence. Verification records distinguish
   numeric CAD comparisons, visual observations, and file existence/hash checks;

@@ -18,12 +18,13 @@ from .specification import ROWS, merge_patch, check_verification
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_TEXT = 1024 * 1024
-RESERVED = {'design-spec.json', 'CAD_GUIDE.md', 'cad_paths.py'}
+RESERVED = {'design-spec.json', 'CAD_GUIDE.md', 'cad_paths.py', 'svg_path.py', 'cad_paths.scad'}
 CONTEXT_DIR = '.cadpilot-context'
 # Required software resources must not live in the persisted knowledge volume:
 # an existing Docker volume hides files added to that directory in a new image.
 SERVER = Path(__file__).resolve().parent
-SUPPLIED_FILES = {'CAD_GUIDE.md': SERVER / 'guides/source-workspace.md', 'cad_paths.py': SERVER / 'cad_paths.py'}
+SUPPLIED_FILES = {'CAD_GUIDE.md': SERVER / 'guides/source-workspace.md', 'cad_paths.py': SERVER / 'cad_paths.py',
+                  'svg_path.py': SERVER / 'svg_path.py', 'cad_paths.scad': SERVER / 'cad_paths.scad'}
 
 
 def digest(data):
@@ -242,16 +243,17 @@ class SourceWorkspace:
                 raise ValueError('Requirements, decisions and reference observations need unique IDs and text')
             seen.add(row['id'])
             if row.get('origin') not in ('user', 'sourced', 'assumed'):
-                raise ValueError('Record origin as user, sourced or assumed')
+                raise ValueError(f"{row['id']}: origin must be user, sourced or assumed (got {row.get('origin')!r}); new rows need id, text, origin and evidence")
             ids = row.get('evidence', [])
             if not isinstance(ids, list) or any(not isinstance(i, str) or i not in available for i in ids):
                 raise ValueError(f'Unknown evidence for {row["id"]}; read spec_read/inspect for actual IDs')
             if row['origin'] == 'user' and not any(i.startswith('input:') for i in ids):
-                raise ValueError('User decisions require an actual user input evidence ID')
+                raise ValueError(f"{row['id']}: User decisions require an actual user input evidence ID (input:...) in evidence; "
+                                 'measurements alone do not show the user asked for it. Use origin assumed or sourced otherwise.')
             if row['origin'] == 'sourced' and not any(not i.startswith(('input:', 'measure:')) for i in ids):
-                raise ValueError('Sourced requirements require an opened page or saved image ID')
+                raise ValueError(f"{row['id']}: Sourced requirements require an opened page or saved image ID in evidence")
             if row.get('status', 'open') not in ('open', 'implemented', 'verified', 'retired'):
-                raise ValueError('Requirement status is open, implemented, verified or retired')
+                raise ValueError(f"{row['id']}: Requirement status is open, implemented, verified or retired")
             if not isinstance(row.get('features', []), list) or any(not isinstance(f, str) for f in row.get('features', [])):
                 raise ValueError('Feature links must be an array of body/face names')
             if 'retirement' in row and not isinstance(row['retirement'], dict):
@@ -419,7 +421,7 @@ class SourceWorkspace:
             data = args['content'].encode()
             if len(data) > MAX_TEXT:
                 raise ValueError('Text files are limited to 1 MiB')
-            if path.name in ('CAD_GUIDE.md', 'cad_paths.py') and path.parent == self.path:
+            if path.name in SUPPLIED_FILES and path.parent == self.path:
                 raise ValueError(path.name + ' is supplied by CADPilot')
             if path == self.file('design-spec.json'):
                 value = json.loads(data)

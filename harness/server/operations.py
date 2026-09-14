@@ -80,7 +80,10 @@ SPECS = {
                          'description': {'type': 'string', 'maxLength': 200}})},
                      'multi_select': {'type': 'boolean'}},
     'research': {'query_or_url': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
-                 'focus': {'type': 'string', 'maxLength': 500}},
+                 'focus': {'type': 'string', 'maxLength': 500},
+                 'part': {'type': 'integer', 'minimum': 0, 'maximum': 10000, 'description': 'Read part N of a long document (0 = focus passages / part 1)'},
+                 'pages': {'type': 'array', 'items': {'type': 'integer', 'minimum': 1, 'maximum': 10000}, 'minItems': 0, 'maxItems': 2,
+                           'description': 'PDF only: [first, last] pages (at most 4) to render as images'}},
     # Legacy v1 tools: replayed from saved ledgers, not offered to the model.
     'hollow': {'body': TEXT, 'wall': EXPR, 'floor': EXPR, 'parameters': PARAMETERS},
     'side_window': {'body': TEXT, 'face': {'type': 'string', 'enum': ['front', 'back', 'left', 'right']},
@@ -1047,12 +1050,12 @@ TOOL_DESCRIPTIONS = {
     'replace_operation': 'Rewrite a saved operation with the same tool and body (use edit_operation for single fields).',
     'inspect': 'Return the current measurements: bounds, wall bands, parameters, datums, references, faces.',
     'brief': 'Write or replace the design brief: what you build, each dimension tagged user | sourced | assumed, open questions. Update it when you decide a layout.',
-    'research': 'Web lookup: query_or_url is 3-8 keywords, or one http(s) URL to read a page/PDF; focus says what to find. A page must be read before its numbers count as sourced.',
+    'research': 'Web lookup: query_or_url is 3-8 keywords (ten leads with snippets), or one http(s) URL to read a page/PDF. A read returns one part of the document: focus picks the most relevant passages, part=N pages through a long document, and pages=[first,last] renders up to four PDF pages as images you can read and crop with view_image. Reading the same URL again is free. A page must be read before its numbers count as sourced.',
     'research_images': 'Fetch a few reference pictures for a query; they are attached to your next turn so you can look at them.',
     'import_reference': 'Download a public STEP/STL URL (or name an uploaded file) into the project as a reference model.',
     'recall_facts': 'Measurements you extracted from pages in earlier work, with their sources.',
     'design_notes': 'General design rules by topic: fdm enclosures, fasteners and fans, mechanical design.',
-    'ask_question': 'Ask one question with optional suggested choices (0-6 options). Every question has its own text answer option. The answer comes back as the tool result; use it for choices you would otherwise guess.',
+    'ask_question': 'Ask the user one focused question and wait for the answer, which comes back as this tool result. Offer 2-6 short options when there are natural choices (put the option you recommend first; describe trade-offs briefly); the user can always type their own answer instead. Use it for choices you would otherwise guess; never re-ask what the conversation already answers.',
     'ask': 'Ask the user a free-text question; the answer comes back as the tool result.',
     'review': 'Request an independent advisory review of the saved model against the request and brief; returns status and issues.',
 }
@@ -1100,7 +1103,7 @@ def tool_definitions():
                           'required': ['index', 'operation']}
         else:
             spec = SPECS[tool]
-            parameters = {'type': 'object', 'properties': copy.deepcopy(spec), 'required': [k for k in spec if k != 'parameters']}
+            parameters = {'type': 'object', 'properties': copy.deepcopy(spec), 'required': [k for k in spec if k not in ('parameters', 'part', 'pages')]}
         definitions.append({'type': 'function', 'function': {'name': tool, 'description': TOOL_DESCRIPTIONS[tool], 'parameters': parameters}})
     return definitions
 
@@ -1168,6 +1171,8 @@ def normalize_tool_arguments(tool, arguments):
         args['options'] = [({'label': o, 'description': ''} if isinstance(o, str) else {'label': o.get('label', ''), 'description': o.get('description', '') or ''}) for o in args.get('options', [])]
     if tool == 'research':
         args.setdefault('focus', '')
+        args.setdefault('part', 0)
+        args.setdefault('pages', [])
     if tool == 'edit_operation' and isinstance(args.get('changes'), list):
         args['changes'] = [{'field': c.get('field', ''), 'value': c['value'] if isinstance(c.get('value'), str) else json.dumps(c.get('value'))} for c in args['changes'] if isinstance(c, dict)]
     if tool in ('set_parameter', 'define_parameter') and isinstance(args.get('value'), str):

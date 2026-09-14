@@ -110,9 +110,10 @@ export class TimelineEntry {
     this.head.append(this.label,this.dots,this.status,this.chevron);
     this.summary=element('div','activity-summary');this.sources=new SearchResults(getSource);
     this.diagnostic=element('pre','activity-raw');this.detailBody=element('div','activity-detail-body');
+    this.gallery=element('div','activity-images');this.gallery.hidden=true;
     this.details.append(this.detailBody,this.diagnostic);
     this.headingLine=element('div','activity-heading-line');this.headingLine.append(this.head);
-    this.content.append(this.headingLine,this.summary,this.sources.el,this.details);this.el.append(this.rail,this.content);
+    this.content.append(this.headingLine,this.summary,this.gallery,this.sources.el,this.details);this.el.append(this.rail,this.content);
     this.update(op,replaying);
   }
   update(op,replaying=false) {
@@ -160,6 +161,17 @@ export class TimelineEntry {
     this.summary.hidden=!this.summary.textContent;
     this.sources.el.hidden=op.kind!=='search' || !op.result?.sources?.length;
     if(op.kind==='search')this.sources.update(op.result?.sources);
+    // Pictures the model received (renders, previews, crops) are shown inline; each opens full size.
+    const imageKey=JSON.stringify((op.images||[]).map(i=>i.id));
+    if(imageKey!==this.imageKey){
+      this.imageKey=imageKey;this.gallery.replaceChildren();
+      for(const image of op.images||[]){
+        const link=element('a','activity-image');link.href=image.url;link.target='_blank';link.rel='noopener noreferrer';link.title=image.label||image.id;
+        const img=element('img');img.src=image.url;img.alt=image.label||'Tool image';img.loading='lazy';img.decoding='async';
+        link.append(img);this.gallery.append(link);
+      }
+      this.gallery.hidden=!(op.images||[]).length;
+    }
     if(op.kind==='thinking') {
       if(!this.thinking){
         this.thinkingView=new ThinkingContent();this.thinking=this.thinkingView.region;
@@ -303,53 +315,87 @@ export class StreamingAnswer {
     this.buffer+=held;
   }
 }
-/** Question answers belong to the question card, independently of chat drafts. */
+/** Question answers belong to the question card; the composer can answer it too. */
 export class QuestionCard {
   constructor(segment,onAnswer) {
-    this.onAnswer=onAnswer;this.selected=new Set();this.otherSelected=!(segment.options||[]).length;
+    this.onAnswer=onAnswer;this.selected=new Set();this.custom=!(segment.options||[]).length;this.noteOpen=false;
     this.el=element('div','question-card msg assistant');this.el.setAttribute('role','group');
     this.text=element('div','question-text');this.list=element('div','question-options');
-    this.response=element('textarea','question-response');this.response.rows=3;this.response.maxLength=8000;
-    this.response.placeholder='Type your answer';this.response.setAttribute('aria-label','Your answer');
+    this.response=element('textarea','question-response');this.response.rows=2;this.response.maxLength=8000;
+    this.response.setAttribute('aria-label','Your answer');
     this.response.oninput=()=>this.updateSubmit();
-    this.response.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();this.submit?.click();}};
-    this.actions=element('div','question-actions');this.answerLine=element('div','question-answer');this.answerLine.hidden=true;
-    this.el.append(this.text,this.list,this.response,this.actions,this.answerLine);this.update(segment);
+    this.response.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();this.send();}};
+    this.actions=element('div','question-actions');this.hint=element('span','question-hint');
+    this.answerLine=element('div','question-answer');this.answerLine.hidden=true;
+    this.el.append(this.text,this.list,this.response,this.actions,this.answerLine);
+    this.el.addEventListener('keydown',event=>{
+      if(!this.open||event.target===this.response)return;
+      const index=Number(event.key)-1,options=this.segment.options||[];
+      if(Number.isInteger(index)&&index>=0&&index<options.length){event.preventDefault();this.choose(options[index].label);}
+      else if(event.key==='Escape'&&(this.selected.size||this.custom&&options.length)){event.preventDefault();this.selected.clear();this.custom=false;this.noteOpen=false;this.render();}
+    });
+    this.update(segment);
   }
-  updateSubmit(){if(this.submit)this.submit.disabled=!(this.selected.size || (this.otherSelected&&this.response.value.trim()));}
+  get open(){return this.segment?.status==='running';}
+  choose(label) {
+    const multi=this.segment.multiSelect;
+    if(multi){this.selected.has(label)?this.selected.delete(label):this.selected.add(label);this.render();return;}
+    if(this.selected.has(label)&&!this.noteOpen){this.send();return;}  // second click confirms
+    this.selected=new Set([label]);this.custom=false;this.render();
+  }
+  send() {
+    if(!this.open)return;
+    const text=(this.custom||this.noteOpen)?this.response.value.trim():'';
+    if(!this.selected.size&&!text)return;
+    this.onAnswer(this.segment.questionId,[...this.selected],text);
+  }
+  updateSubmit(){if(this.submit)this.submit.disabled=!(this.selected.size||((this.custom||this.noteOpen)&&this.response.value.trim()));}
   update(segment) {
     const signature=JSON.stringify([segment.question,segment.options,segment.multiSelect,segment.status,segment.answer]);
-    if(signature===this.signature)return;this.signature=signature;this.segment=segment;
-    this.text.textContent=segment.question || '';
-    this.el.setAttribute('aria-label',segment.question || 'Question');
-    const open=segment.status==='running';
+    if(signature===this.signature)return;this.signature=signature;this.segment=segment;this.render();
+  }
+  render() {
+    const segment=this.segment,open=this.open,options=segment.options||[],multi=segment.multiSelect;
+    this.text.textContent=segment.question||'';
+    this.el.setAttribute('aria-label',segment.question||'Question');
     this.list.replaceChildren();this.actions.replaceChildren();
-    for(const option of segment.options || []) {
+    options.forEach((option,index)=>{
       const button=element('button','question-option');button.type='button';button.disabled=!open;
-      button.setAttribute('role',segment.multiSelect?'checkbox':'radio');
-      const chosen=open?this.selected.has(option.label):(segment.answer?.selected || []).includes(option.label);
+      button.setAttribute('role',multi?'checkbox':'radio');
+      const chosen=open?this.selected.has(option.label):(segment.answer?.selected||[]).includes(option.label);
       button.setAttribute('aria-checked',String(chosen));button.classList.toggle('chosen',chosen);
-      button.append(element('span','question-option-label',option.label));
+      const key=element('kbd','question-option-key',String(index+1));key.setAttribute('aria-hidden','true');
+      const label=element('span','question-option-label',option.label);
+      button.append(key,label);
       if(option.description)button.append(element('span','question-option-description',option.description));
-      button.onclick=()=>{
-        if(!open)return;
-        if(segment.multiSelect){this.selected.has(option.label)?this.selected.delete(option.label):this.selected.add(option.label);this.signature=null;this.update(segment);}
-        else this.onAnswer(segment.questionId,[option.label],'');
-      };
+      button.onclick=()=>{if(open)this.choose(option.label);};
       this.list.append(button);
-    }
+    });
     const other=element('button','question-option question-other');other.type='button';other.disabled=!open;
-    other.setAttribute('role',segment.multiSelect?'checkbox':'radio');
-    const otherChosen=open?this.otherSelected:!!segment.answer?.text;
+    other.setAttribute('role',multi?'checkbox':'radio');
+    const otherChosen=open?this.custom:!!segment.answer?.text&&!(segment.answer?.selected||[]).length;
     other.setAttribute('aria-checked',String(otherChosen));other.classList.toggle('chosen',otherChosen);
-    other.append(element('span','question-option-label',(segment.options||[]).length?'Type something else':'Type your answer'));
-    other.onclick=()=>{this.otherSelected=segment.multiSelect?!this.otherSelected:true;if(!segment.multiSelect)this.selected.clear();this.signature=null;this.update(segment);if(this.otherSelected)this.response.focus();};
+    other.append(element('span','question-option-label',options.length?'Something else…':'Type your answer'));
+    other.onclick=()=>{if(!open)return;this.custom=multi?!this.custom:true;if(!multi)this.selected.clear();this.noteOpen=false;this.render();if(this.custom)this.response.focus();};
     this.list.append(other);
-    this.response.hidden=!open||!this.otherSelected;this.response.disabled=!open;
+    const showResponse=open&&(this.custom||this.noteOpen);
+    this.response.hidden=!showResponse;this.response.disabled=!open;
+    this.response.placeholder=this.custom?'Type your answer':'Add a note (optional)';
     this.submit=null;
     if(open) {
-      if(segment.multiSelect||this.otherSelected){this.submit=element('button','btn accent question-submit','Send answer');this.submit.type='button';this.submit.onclick=()=>this.onAnswer(segment.questionId,[...this.selected],this.otherSelected?this.response.value.trim():'');this.actions.append(this.submit);this.updateSubmit();}
       this.el.dataset.state='open';
+      if(this.selected.size||this.custom) {
+        this.submit=element('button','btn accent question-submit','Send answer');this.submit.type='button';this.submit.onclick=()=>this.send();
+        this.actions.append(this.submit);
+        if(this.selected.size&&!this.custom&&!this.noteOpen){
+          const note=element('button','question-note','Add a note');note.type='button';
+          note.onclick=()=>{this.noteOpen=true;this.render();this.response.focus();};this.actions.append(note);
+        }
+        this.hint.textContent=multi?'Choose any that apply, then send':this.noteOpen||this.custom?'Enter sends':'Click the choice again or press Send';
+      } else {
+        this.hint.textContent=options.length?`Pick an option${options.length<10?' (or press 1–'+options.length+')':''}, or reply in the message box below`:'Type your answer here or in the message box below';
+      }
+      this.actions.append(this.hint);this.updateSubmit();
     } else {
       this.el.dataset.state=segment.status;
       const answer=segment.answer?.summary;

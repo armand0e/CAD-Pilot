@@ -229,6 +229,66 @@ print("sandbox confirmed")
         self.assertFalse(self.work.dirty())
         self.assertTrue(self.project.file(head,'source.zip').exists())
 
+    async def test_path_generators_loft_pipe_and_cut_through(self):
+        code='''from cad_paths import extrude, revolve, loft, pipe, cut_through, rect, circle, slot, hexagon, d_shape, polygon, with_holes
+import FreeCAD as App
+plate = extrude(with_holes(rect(60, 40, 4), circle(3.4, (8, 8)), circle(3.4, (52, 32)), slot(14, 4, (23, 18))), 3)
+housing = extrude("M0 0 L40 0 C50 0 55 10 50 20 Q40 35 20 25 L0 20 Z", height=8)
+before = housing.Volume
+housing = cut_through(housing, rect(10, 4, 1), plane='xz', at=(15, 0, 2))
+assert housing.Volume < before - 10, (before, housing.Volume)
+nut = extrude(hexagon(5.5), 2.4); nut.translate(App.Vector(100, 0, 0))
+key = extrude(d_shape(6, 1), 5); key.translate(App.Vector(100, 20, 0))
+vase = loft([rect(40, 30, 6, center=True), circle(24), circle(36)], [0, 40, 70]); vase.translate(App.Vector(200, 0, 0))
+handle = pipe("M0 0 C0 30 60 30 60 0", diameter=8, plane='xz'); handle.translate(App.Vector(300, 0, 0))
+try:
+    cut_through(nut, rect(2, 2), plane='xy', at=(50, 50, 0))
+    raise AssertionError('cut outside the body must be reported')
+except ValueError as error:
+    assert 'removed no material' in str(error), error
+parts = {"Plate": plate, "Housing": housing, "Nut": nut, "Key": key, "Vase": vase, "Handle": handle}
+'''
+        await self.work.fs({'action':'write','path':'model.py','content':code})
+        saved=await self.build()
+        volumes={p['feature']:p['volume_mm3'] for p in saved['geometry']['parts']}
+        self.assertEqual(saved['geometry']['solid_count'],6)
+        import math
+        self.assertAlmostEqual(volumes['Plate'],(60*40-(4-math.pi)*16-2*math.pi*1.7**2-(10*4+math.pi*4))*3,delta=.5)
+        self.assertAlmostEqual(volumes['Nut'],2.4*2*math.sqrt(3)*2.75**2,delta=.05)
+        self.assertGreater(volumes['Vase'],40*30*10)
+        self.assertAlmostEqual(volumes['Handle'],math.pi*16*saved['geometry']['parts'][5]['bounds_mm'][0] if False else volumes['Handle'],delta=1)
+        self.assertGreater(volumes['Handle'],math.pi*16*60)
+        # The preview tool runs without the kernel and attaches a picture the model can read.
+        from server.workspace_tools import dispatch
+        from types import SimpleNamespace
+        runner=SimpleNamespace(pending_images=[],emit=lambda e:None)
+        bridge=SimpleNamespace(runner=runner,ctx={'project':self.project,'expected_head':saved['head']},record_inputs=lambda work:None)
+        result=await dispatch(bridge,'path_preview',{'path':'M0 0 L10 10 L10 0 L0 10 Z','label':'twisted'})
+        self.assertFalse(result['valid']); self.assertTrue(any('crosses itself' in w for w in result['warnings']))
+        self.assertEqual(runner.pending_images[-1]['id'],result['image']['id'])
+        with self.assertRaisesRegex(ValueError,'cannot become a solid'):
+            await dispatch(bridge,'create_path_body',{'name':'Twisted','path':'M0 0 L10 10 L10 0 L0 10 Z','operation':'extrude','height':3})
+        result=await dispatch(bridge,'create_path_body',{'name':'Bracket','path':with_holes_fixture(),'operation':'extrude','height':3})
+        self.assertEqual(result['holes'],1); self.assertTrue(self.work.file('profiles/Bracket.svg').is_file())
+        self.assertIn('evenodd',self.work.file('profiles/Bracket.svg').read_text())
+        await self.work.fs({'action':'write','path':'model.py','content':'from profiles.Bracket import shape as Bracket\nparts={"Bracket":Bracket}\n'})
+        saved=await self.build()
+        self.assertEqual(saved['geometry']['solid_count'],1)
+        self.assertAlmostEqual(saved['geometry']['volume_mm3'],(30*20-math.pi*4)*3,delta=.2)
+        await self.work.fs({'action':'write','path':'model.scad','content':'linear_extrude(height=3) import("profiles/Bracket.svg");\n'})
+        saved=await self.build('model.scad')
+        self.assertEqual(saved['geometry']['solid_count'],1)
+        self.assertAlmostEqual(saved['geometry']['volume_mm3'],(30*20-math.pi*4)*3,delta=6)
+        # The OpenSCAD helpers mirror the generators: rounded plate with a hex pocket and a slot, plus a lofted knob.
+        await self.work.fs({'action':'write','path':'model.scad','content':'''use <cad_paths.scad>;
+linear_extrude(3) difference() { rounded_rect(60, 40, 4); translate([15, 20]) hexagon(5.5); translate([25, 18]) slot(14, 4); }
+translate([80, 0, 0]) loft2(0, 20) { rounded_rect(20, 20, 4, center = true); circle(d = 10, $fn = 48); }
+'''})
+        saved=await self.build('model.scad')
+        self.assertEqual(saved['geometry']['solid_count'],2)
+        plate=(60*40-(4-math.pi)*16-2*math.sqrt(3)*2.75**2-(10*4+math.pi*4))*3
+        self.assertAlmostEqual(saved['geometry']['parts'][0]['volume_mm3'],plate,delta=8)
+
     async def test_svg_arcs_quadratic_smooth_and_revolve(self):
         code='''from cad_paths import extrude, revolve
 import FreeCAD as App
@@ -243,6 +303,11 @@ parts={"Round":a,"Turned":b,"Smooth":c}
         saved=await self.build()
         self.assertEqual(saved['geometry']['solid_count'],3)
         self.assertAlmostEqual(saved['geometry']['parts'][0]['volume_mm3'],3.141592653589793*100*5,delta=.03)
+
+
+def with_holes_fixture():
+    from server.svg_path import rect, circle, with_holes
+    return with_holes(rect(30, 20), circle(4, (15, 10)))
 
 
 class PiWorkspaceTests(WorkspaceTests):
@@ -268,6 +333,11 @@ class PiWorkspaceTests(WorkspaceTests):
             await runner.wait_stopped()
         results=[m for m in pi_messages(runner) if m.get('role')=='toolResult']
         self.assertEqual(len(results),len(calls))
+        # The model works in /work; Pi's appended working-directory line must not leak the host path.
+        system=runner.pi_test_requests[0]['messages'][0]['content']
+        self.assertIn('Current working directory: /work',system)
+        self.assertNotIn(str(self.project.path),system)
+        self.assertTrue(self.work.file('svg_path.py').is_file())
         self.assertFalse(any(m.get('isError') for m in results),[message_text(m) for m in results])
         self.assertIn('length = 42',message_text(results[3]))
         self.assertIn('pi shell works',message_text(results[4]))

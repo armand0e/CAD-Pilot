@@ -38,8 +38,16 @@ function finishThinking(turn, ts, status = 'completed') {
 }
 function segment(turn, id) { return turn.segments.find(s => s.id === id); }
 function researchStep(op, event) {
-  if(!event.activity)return;
   const steps=op.researchSteps ||= [],previous=steps.at(-1);
+  if('step' in event) {
+    // Current workers send an explicit trail entry; live activity alone never becomes a step.
+    op.explicitSteps=true;
+    const step=event.step;
+    if(!step?.activity || (previous?.activity===step.activity && previous.detail===(step.detail || '')))return;
+    steps.push({at:step.at || event.ts || op.startedAt,activity:step.activity,detail:step.detail || ''});
+    return;
+  }
+  if(op.explicitSteps || !event.activity)return;
   if(previous?.activity===event.activity && previous.detail===(event.detail || ''))return;
   steps.push({at:event.ts || event.finished_at || event.started_at || op.startedAt,activity:event.activity,detail:event.detail || ''});
 }
@@ -77,7 +85,7 @@ export function reduceChat(state, event) {
       event.message==='Continuing from the current document with your latest guidance.'))return false;
   if(!['user','control','phase','thinking_start','thinking_delta','thinking_done','thinking_truncated','tool_input_start','tool_input_delta','tool_input_done','tool_settled','research_start','research_result','research_agent',
     'research_error','research_cancelled','research_notes','intent','action','native_attempt','step_done','step_review',
-    'tool_error','step_error','step_blocked','step_superseded','answer_start','answer_delta','answer_done','assistant',
+    'tool_error','step_error','step_blocked','step_superseded','answer_start','answer_delta','answer_done','assistant','tool_image',
     'pause','note','recovery','native_review','task_review','done','error','question','answer'].includes(event.t))return false;
   const eventKey = event.event_id || (event.id ? `legacy:${event.id}` : null);
   if (eventKey && state.seen.has(eventKey)) return false;
@@ -163,6 +171,12 @@ export function reduceChat(state, event) {
     case 'tool_settled': {
       const op=segment(turn,event.operation_id);if(op && (!terminal(op.status) || (op.status==='interrupted' && event.status==='cancelled'))){op.status=event.status;op.finishedAt=event.ts;op.result={message:event.message};if(op.status==='failed')op.error=event.message;}break;
     }
+    case 'tool_image': {
+      const op=segment(turn,event.operation_id);if(!op)break;
+      let url=null;try{url=new URL(event.url,location.origin);}catch{break;}
+      if(url.origin===location.origin && /^\/api\/projects\/[a-f0-9]{16}\/images\/[a-zA-Z0-9:._-]+$/.test(url.pathname) && !(op.images||[]).some(i=>i.id===event.image))(op.images ||= []).push({id:event.image,label:event.label || '',url:url.pathname});
+      break;
+    }
     case 'research_start': {
       finishThinking(turn,event.ts);
       const kind = event.operation==='research_dimensions' ? 'research_agent' : event.operation === 'read' || /^https?:/.test(event.query) ? 'read' : 'search';
@@ -183,7 +197,11 @@ export function reduceChat(state, event) {
       state.researchAgents.set(event.agent_id,{turnId:turn.id,operationId:op.id});
       if(terminal(op.status) && (event.status==='running' || (op.status!=='completed' && event.status==='completed')))break;
       if(op.research?.ts>event.ts)break;
-      Object.assign(op,{kind:'research_agent',status:event.status,research:{...op.research,...event},finishedAt:event.finished_at});
+      const {step,ephemeral,...progress}=event;
+      // Sources accumulate across events; a live-only update carries none.
+      const sources=[...(op.research?.sources || [])];
+      for(const source of progress.sources || []){const i=sources.findIndex(s=>s.id===source.id);if(i===-1)sources.push(source);else sources[i]={...sources[i],...source};}
+      Object.assign(op,{kind:'research_agent',status:event.status,research:{...op.research,...progress,sources},finishedAt:event.finished_at});
       researchStep(op,event);
       for(const source of event.sources || [])rememberSource(state,{...source,operationId:op.id});
       break;

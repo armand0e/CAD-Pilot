@@ -353,6 +353,18 @@ class AgentRunner:
             self._cad_operations[event['step']] = {'operation_id': event.get('operation_id') or uuid.uuid4().hex, 'turn_id': event['turn_id']}
         if event['t'] in ('intent', 'action', 'step_done', 'step_review', 'step_error', 'step_blocked', 'step_superseded', 'tool_error'):
             event.update(self._cad_operations.get(event.get('step'), {}))
+        if event.get('ephemeral'):
+            # Live status only (a researcher's current activity): broadcast and
+            # observe it, but keep it out of the saved history and event tail.
+            for queue in list(self.subscribers):
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    pass
+            observer = getattr(self, 'activity_observer', None)
+            if observer:
+                observer(event)
+            return
         self.events.append(event)
         self.dialogue.consume(event)
         if self.transcript:
@@ -394,7 +406,7 @@ class AgentRunner:
                 "can_continue": bool(self.task_text), "journal_warning": self.journal.failed if self.journal else None,
                 "web_enabled": self.web_enabled, "chat_protocol": 1, "image_context": self.image_context,
                 "persistence_warning": self._transcript_warning,
-                "research_agents": research_snapshot(transcript, self.active),
+                "research_agents": research_snapshot(transcript, self.active, getattr(self, 'investigations', None)),
                 "events": list(self.events),
                 "transcript": transcript}
 
@@ -503,6 +515,11 @@ class AgentRunner:
     def submit_intent(self, text: str, attachments=None) -> None:
         if not self.active or not isinstance(text, str) or not 0 < len(text.strip()) <= 8000:
             raise ValueError("Start a task before sending an objective")
+        if self._question and self._answer_future and not self._answer_future.done():
+            # The model is blocked inside its question; a typed reply is the answer,
+            # not guidance to queue behind it.
+            self.answer_question(self._question['question_id'], [], text, attachments=attachments)
+            return
         accepted = self._accept_attachments(attachments)
         if accepted:
             text = text + f" [{len(accepted)} image attachment(s)]"
@@ -587,11 +604,14 @@ class AgentRunner:
             self._question = None
             self._answer_future = None
 
-    def answer_question(self, question_id, selected=None, text=''):
+    def answer_question(self, question_id, selected=None, text='', attachments=None):
         if not self._question or self._question['question_id'] != question_id:
             raise ValueError('That question is no longer open')
         selected = [item.strip() for item in (selected or []) if isinstance(item, str) and item.strip()][:6]
         text = text.strip()[:8000] if isinstance(text, str) else ''
+        accepted = self._accept_attachments(attachments)
+        if accepted:
+            text = (text + f" [{len(accepted)} image attachment(s): " + ', '.join(a['id'] for a in accepted) + ']').strip()
         if not selected and not text:
             raise ValueError('Choose an option or type an answer')
         labels = [option['label'] for option in self._question['options']]
@@ -600,7 +620,8 @@ class AgentRunner:
         if not self._question['multi_select'] and len(selected) > 1:
             raise ValueError('Choose one option')
         summary = '; '.join(selected + ([text] if text else []))
-        answer = {'question_id': question_id, 'selected': selected, 'text': text, 'summary': summary}
+        answer = {'question_id': question_id, 'selected': selected, 'text': text, 'summary': summary,
+                  'attachments': [a['id'] for a in accepted]}
         self.emit({'t': 'answer', **answer})
         self.user_messages.append(summary)
         self._clarification_reviewed = False
@@ -608,6 +629,12 @@ class AgentRunner:
         if self._answer_future and not self._answer_future.done():
             self._answer_future.set_result(answer)
         return answer
+
+    def cancel_investigation(self, agent_id):
+        from .research_progress import cancel_investigation
+        if not isinstance(agent_id, str):
+            raise ValueError('agent_id must be a string')
+        cancel_investigation(self, agent_id)
 
     def stop(self, reason: str = "stopped by user") -> None:
         self.stop_reason = reason
@@ -1084,7 +1111,41 @@ class AgentRunner:
             {'text': s['text'][:7000] if s['id'] in recent else s['text'][:600] if s['kind'] == 'search_result' else '[Page text omitted; its supporting quotes are in notes. Read this URL again to inspect it.]'}
             for s in self.research['sources']]}
 
-    async def _research_step(self, objective, focus, *, identity=None):
+    @property
+    def documents(self):
+        """The modeler's own document reader: parts, focus passages and rendered PDF pages on disk."""
+        if getattr(self, '_documents', None) is None:
+            from .research_reader import DocumentReader
+            project = self.session.project
+            self._documents = DocumentReader(self.research_tool, project.path / 'research-docs', project.path)
+        return self._documents
+
+    async def _read_document(self, url, focus, part, pages, identity):
+        """Pi path: one view of a document through the shared reader, recorded as an opened source."""
+        from datetime import datetime, timezone
+        result, images = await self._inference(self.documents.read(url, focus, part, pages, subject=self.task_text[:200]))
+        project = self.session.project
+        previous = next((s for s in self.research['sources'] if s['id'] == result['id']), {})
+        known = {i['id']: i for i in previous.get('images', [])}
+        for image in images:
+            known[image['id']] = {'id': image['id'], 'page': image['page'], 'label': image['label']}
+            self.pending_images = (self.pending_images + [{'id': image['id'], 'path': str(project.path / 'research-images' / image['id']),
+                                                            'label': image['label'], 'url': result['url'], 'document_source_id': result['id'],
+                                                            'page': image['page']}])[-8:]
+        entry = {'id': result['id'], 'url': result['url'], 'domain': result.get('domain'), 'title': result['title'], 'kind': result['kind'],
+                 'opened': True, 'text': result.get('text', ''), 'snippet': '', 'retrieved_at': time.time(),
+                 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'images': list(known.values()),
+                 'truncation': {'text': result.get('parts', 1) > 1, 'original_characters': result.get('characters', 0),
+                                'method': 'one part of the document; other parts are readable with part=N'}}
+        self.research['sources'] = [s for s in self.research['sources'] if s['id'] != result['id']] + [entry]
+        self._save_conversation()
+        self.emit({'t': 'research_result', **identity, 'operation': 'read', 'query': url, 'focus': focus,
+                   'sources': [{k: v for k, v in entry.items() if k != 'text'} | {'excerpt': entry['text'][:12000]}],
+                   'notes': self.research['notes'], 'cached': False, 'part': result.get('part'), 'pages': result.get('rendered_pages')})
+        self.history_lines.append('Web read: ' + url + '; source ID: ' + result['id'])
+        return {'tool': 'research', 'result': result}
+
+    async def _research_step(self, objective, focus, *, identity=None, part=None, pages=None):
         self.set_phase('researching')
         pi_research = self._pi_bridge is not None or getattr(self, 'research_profile', False)
         self._research_calls += 1
@@ -1106,6 +1167,11 @@ class AgentRunner:
             # a search engine hiccup can.
             if failure and time.time() - failure[0] < (3600 if objective.startswith(('http://', 'https://')) else 90):
                 raise ResearchError('This lookup already failed recently; it was NOT repeated. Try a different query or source. Previous error: ' + failure[1])
+            if pi_research and objective.startswith(('http://', 'https://')) and getattr(self.session, 'project', None):
+                feedback = await self._read_document(objective, focus, part, pages, identity)
+                lookup_settled = True
+                self.execution_feedback = feedback
+                return feedback
             cached = self._research_cache.get(key)
             if cached and time.time() - cached[0] < 900:
                 result = cached[1]
@@ -1129,7 +1195,13 @@ class AgentRunner:
                 old = previous.get(incoming['id'])
                 # A repeated search must never demote a fetched page to a snippet.
                 retained.append(old if old and old['kind'] != 'search_result' and incoming['kind'] == 'search_result' else incoming)
-            self.research['sources'] = ([s for s in self.research['sources'] if s['id'] not in source_ids] + retained)[-40:]
+            combined = [s for s in self.research['sources'] if s['id'] not in source_ids] + retained
+            if len(combined) > 80:
+                # Trim search leads before opened pages, so cited facts keep their sources.
+                leads = [s for s in combined if s['kind'] == 'search_result']
+                drop = {id(s) for s in leads[:len(combined) - 80]}
+                combined = [s for s in combined if id(s) not in drop][-80:]
+            self.research['sources'] = combined
             known = {s['id'] for s in self.research['sources']}
             self.research['notes']['facts'] = [f for f in self.research['notes']['facts'] if f['source_id'] in known]
             supported = []
@@ -1190,6 +1262,8 @@ class AgentRunner:
             raise
         except Exception as error:
             detail = str(error)[:900] if isinstance(error, ResearchError) else 'Research request failed or timed out; no new specification was established.'
+            if isinstance(error, ResearchError) and objective.startswith(('http://', 'https://')) and re.search(r'HTTP 4\d\d|Could not resolve', detail):
+                detail += '. Do not guess URLs: read a URL returned by a search or listed in an opened page, or search for the document title.'
             self._research_failures.setdefault(key[0], (time.time(), detail))
             if len(self._research_failures) > 24:
                 self._research_failures.pop(next(iter(self._research_failures)))
@@ -1404,7 +1478,8 @@ class AgentRunner:
                 answer = await self._await_answer(question if self._pi_bridge is not None else question + self._grounding_caveat(question), args.get('options'), args.get('multi_select', False))
                 return {'result': {'ok': True, 'question': question, 'answer': answer}, 'failed': False, 'free': True}
             if name == 'research':
-                feedback = await self._research_step(args['query_or_url'], args['focus'], identity=identity)
+                feedback = await self._research_step(args['query_or_url'], args['focus'], identity=identity,
+                                                     part=args.get('part') or None, pages=args.get('pages') or None)
                 return {'result': feedback, 'failed': 'error' in feedback, 'free': True, 'research_pages': True}
             if name == 'research_images':
                 feedback = await self._research_images_step(args['query'], identity=identity)

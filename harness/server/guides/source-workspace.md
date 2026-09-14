@@ -51,26 +51,43 @@ cad_build is the operation that validates, saves and opens a model revision.
 
 ## Draw bodies with paths
 
-Use create_path_body to draft a reusable profile module, or directly use cad_paths
-in Python. Start with a custom outline instead of a box/cylinder. Supports SVG path
-data M/L/H/V/C/S/Q/T/A/Z, absolute and relative commands. Lines and quadratic/cubic
-Béziers become native CAD edges; elliptical A arcs use cubic segments of at most
-45 degrees (an approximation). All outlines must close with Z. Multiple subpaths
-use even/odd nesting for holes. Path data follows https://www.w3.org/TR/SVG/paths.html.
-This accepts a path's d string, not an entire SVG/XML document or its transforms.
+Custom outlines are SVG path data (the d attribute, not a whole SVG document):
+M/L/H/V/C/S/Q/T/A/Z, absolute or relative, several subpaths with even/odd nesting for
+holes. One path unit is 1 mm unless scale is given; flip_y=True maps SVG's downward
+y to CAD's upward y. Lines and Béziers become native curves; A arcs use cubic
+segments of at most 45 degrees. Path data follows https://www.w3.org/TR/SVG/paths.html.
+
+Run path_preview on any hand-written outline before building. It returns bounds,
+area, which subpaths are holes, warnings (self-intersections, unclosed outlines) and
+a picture with a millimetre grid, the start point and the direction of travel.
+Generators return valid paths directly; combine them and check the preview.
 
 ```python
-from cad_paths import extrude, revolve
-outline = "M0 0 L40 0 C50 0 55 10 50 20 Q40 35 20 25 L0 20 Z"
-body = extrude(outline, height=8)
-# Other planes: xy extrudes +z, xz extrudes -y, yz extrudes +x.
-# One path unit is 1 mm by default. scale converts units; flip_y=True
-# explicitly maps SVG downward-y coordinates to upward CAD coordinates.
-parts = {"CurvedHousing": body}
+from cad_paths import extrude, revolve, loft, pipe, cut_through, rect, circle, slot, polygon, hexagon, d_shape, with_holes
+import FreeCAD as App
+
+plate = extrude(with_holes(rect(60, 40, 4), circle(3.4, (8, 8)), circle(3.4, (52, 32)), slot(14, 4, (23, 18))), 3)
+housing = extrude("M0 0 L40 0 C50 0 55 10 50 20 Q40 35 20 25 L0 20 Z", height=8)
+housing = cut_through(housing, rect(10, 4, 1), plane='xz', at=(15, 0, 2))     # port opening through the front wall
+nut = extrude(hexagon(5.5), 2.4)                                                 # M3 nut pocket cutter
+knob = revolve("M0 0 L10 0 Q15 10 10 20 L0 20 Z")                               # radius/height profile in XZ, around +Z
+vase = loft([rect(40, 30, 6, center=True), circle(24), circle(36)], [0, 40, 70])
+handle = pipe("M0 0 C0 30 60 30 60 0", diameter=8, plane='xz')                  # round bar along an open path
+parts = {"Plate": plate, "Housing": housing, "Knob": knob}
 ```
 
-For a turned part, revolve a closed radius/height profile in XZ around +Z. Curves,
-holes, source parameters, cuts and fillets can be combined freely with the Part API.
+extrude planes: xy -> +z, xz -> -y, yz -> +x. cut_through places the outline on the
+plane through `at` and cuts along the normal, completely through unless depth is set.
+loft sections are single outlines without holes at increasing heights; pipe sweeps a
+circle along an open or closed spine. create_path_body drafts a reusable profile
+module (profiles/<name>.py) and an SVG file OpenSCAD can import() with
+linear_extrude(). Curves, holes, parameters, cuts and fillets combine freely with
+the Part API.
+
+OpenSCAD: `use <cad_paths.scad>;` gives the 2D modules rounded_rect, slot, polygon_n,
+hexagon, d_shape, svg_outline(file) (millimetres, y up) and loft2(h0, h1) { a; b; }
+(convex hull loft between two 2D children). Combine them with difference() and
+linear_extrude/rotate_extrude; pipe has no OpenSCAD counterpart.
 
 ## Inspect actual geometry
 

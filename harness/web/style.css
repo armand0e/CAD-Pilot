@@ -286,7 +286,15 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .question-option { display: grid; gap: 2px; text-align: left; padding: 9px 12px; border: 1px solid var(--hairline2); border-radius: var(--r-sm); background: var(--surface-inset); }
 .question-option:hover:not(:disabled) { border-color: var(--border-hover); background: var(--surface-hover); }
 .question-option.chosen { border-color: var(--accent); background: var(--accent-soft); }
+.question-option { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: baseline; }
+.question-option-key { grid-row: 1; font: 10px var(--mono); color: var(--text3); padding: 1px 5px; border: 1px solid var(--hairline2); border-radius: 4px; background: var(--bg-elev); }
+.question-option.chosen .question-option-key { color: var(--accent); border-color: var(--accent); }
+.question-option-description { grid-column: 2; }
+.question-other .question-option-label { grid-column: 1 / -1; }
 .question-option-label { font-weight: 600; font-size: 13px; }
+.question-hint { font-size: 11px; color: var(--text3); }
+.question-note { appearance: none; background: none; border: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 2px; }
+.question-note:hover { text-decoration: underline; }
 .question-option-description { font-size: 12px; color: var(--text2); }
 .question-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .question-response { box-sizing: border-box; width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--hairline2); border-radius: var(--r-sm); color: var(--text); background: var(--surface-inset); font: inherit; }
@@ -384,6 +392,11 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .research-agent-summary::-webkit-details-marker {display:none;}
 .research-agent-summary:focus-visible {outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-md);}
 .research-agent-heading,.research-agent-line {display:flex;align-items:center;gap:8px;}
+.research-agent-pulse {flex:none;width:6px;height:6px;border-radius:50%;background:var(--text3);}
+.research-agent.is-live .research-agent-pulse {background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);animation:research-breathe 2s ease-in-out infinite;}
+.research-agent[data-status="completed"] .research-agent-pulse {background:var(--good);}
+.research-agent[data-status="failed"] .research-agent-pulse {background:var(--bad);}
+.research-agent[data-status="incomplete"] .research-agent-pulse {background:var(--warn);}
 .research-agent-title {font-weight:600;flex:1;color:var(--text);}
 .research-agent-mark {display:flex;color:var(--accent);}
 .research-agent.is-live .research-agent-mark {animation:research-breathe 2s ease-in-out infinite;}
@@ -399,6 +412,9 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .research-agent[open]>.research-agent-summary::after {content:'Hide research ↑';}
 .research-agent-detail {font-size:11px;color:var(--text3);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .research-agent-counts,.research-agent-wait {font-size:10px;color:var(--text3);}
+.research-agent-stop {align-self:flex-start;appearance:none;border:1px solid var(--hairline2);border-radius:var(--r-sm);background:var(--surface-inset);color:var(--text2);font:500 11px var(--font);padding:4px 9px;cursor:pointer;}
+.research-agent-stop:hover:not(:disabled) {border-color:var(--bad);color:var(--bad);}
+.research-agent-stop:disabled {opacity:.5;cursor:default;}
 .research-agent-body {border-top:1px solid var(--hairline);overflow-wrap:anywhere;color:var(--text2);line-height:1.5;}
 .research-agent-body p {margin:9px 0;}
 .research-agent-body h4 {font:600 10px var(--font);color:var(--text3);margin:0 0 7px;}
@@ -433,7 +449,27 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .research-agent-empty {color:var(--text3);font-size:11px;}
 .research-agent-documented {color:var(--good);font-size:11px;font-weight:600;}
 .research-agent-outcome {color:var(--text);white-space:pre-wrap;}
-.research-agent-unresolved {border-top:1px solid var(--hairline);margin-top:12px;padding-top:12px;}
-.research-agent-unknowns {margin:0;padding-left:16px;font-size:11px;}
+.research-agent-findings {display:grid;grid-template-columns:minmax(0,1.4fr) auto minmax(0,1.6fr) auto;gap:0 12px;font-size:11px;margin:10px 0;}
+.research-agent-finding {display:contents;}
+.research-agent-finding>span {padding:6px 0;border-bottom:1px solid var(--hairline);min-width:0;overflow-wrap:anywhere;}
+.research-agent-finding.is-head>span {font:600 10px var(--font);color:var(--text3);border-bottom-color:var(--hairline2);}
+.research-agent-finding-name {color:var(--text);font-weight:500;}
+.research-agent-finding-value {font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap;}
+.research-agent-finding-datum {color:var(--text2);}
+.research-agent-finding-evidence {display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.research-agent-finding-evidence a {color:var(--text3);font-size:10px;text-decoration:none;}
+.research-agent-finding-evidence a:hover {color:var(--accent);text-decoration:underline;}
+.research-agent-tag {font-size:9px;padding:2px 5px;border-radius:4px;background:var(--bg-elev2);color:var(--good);white-space:nowrap;}
+.research-agent-tag.is-visual {color:var(--warn);}
+.research-agent-source[data-kind="cited"] small {color:var(--good);}
+.research-agent-unresolved,.research-agent-assumed {border-top:1px solid var(--hairline);margin-top:12px;padding-top:12px;}
+.research-agent-unknowns,.research-agent-assumptions {margin:0;padding-left:16px;font-size:11px;}
+@media (max-width:520px) {
+  .research-agent-findings {grid-template-columns:minmax(0,1fr) auto;}
+  .research-agent-finding.is-head {display:none;}
+  .research-agent-finding-datum,.research-agent-finding-evidence {grid-column:1 / -1;border-bottom:0;padding-top:0;}
+  .research-agent-finding-evidence {border-bottom:1px solid var(--hairline);padding-bottom:8px;}
+  .research-agent-finding-name,.research-agent-finding-value {border-bottom:0;padding-bottom:2px;}
+}
 @keyframes research-breathe {50% {opacity:.35;}}
 @media (prefers-reduced-motion:reduce) {.research-agent.is-live .research-agent-mark,.research-agent.is-live .research-agent-step.is-current>div::before {animation:none;}}

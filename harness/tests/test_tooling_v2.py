@@ -334,7 +334,7 @@ class ContextAndQuestionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runner.dialogue.answered_questions()[-1]['answer'], '3B+')
         self.assertIsNone(self.runner.snapshot()['pending_question'])
 
-    async def test_local_text_answer_resolves_question_without_using_chat(self):
+    async def test_typed_chat_message_answers_the_open_question(self):
         async def plan(*args):
             self.runner.plan_details = {'decision': 'ask', 'objective': '', 'expected_result': '', 'message': 'Which motor variant?', 'wait_seconds': 0}
             return ''
@@ -343,10 +343,11 @@ class ContextAndQuestionTests(unittest.IsolatedAsyncioTestCase):
                 while not self.runner._question:
                     await asyncio.sleep(0.005)
             self.assertEqual(self.runner.snapshot()['pending_question']['question'], 'Which motor variant?')
-            self.runner.submit_intent('Keep the corners rounded too')
-            self.assertIsNotNone(self.runner._question)
-            self.assertFalse(any(e['t'] == 'answer' for e in self.runner.events))
-            self.runner.answer_question(self.runner._question['question_id'], [], 'the 42 mm one')
+            # The model is blocked inside its question, so a typed reply is the
+            # answer rather than guidance queued behind it.
+            self.runner.submit_intent('the 42 mm one')
+            self.assertTrue(self.runner._answer_future.done())
+            self.assertFalse(any(e['t'] == 'user' and e.get('text') == 'the 42 mm one' for e in self.runner.events))
             self.runner.stop()
         self.runner.config['agent']['native_operations'] = False  # planner path (GUI sessions) still exists
         with patch.object(self.runner, '_plan_intent', plan), patch.object(self.runner, '_ready_image', AsyncMock(return_value=Image.new('RGB', (10, 10)))):

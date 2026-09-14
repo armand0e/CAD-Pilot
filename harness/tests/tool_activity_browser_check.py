@@ -19,10 +19,14 @@ def main():
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
 
+            pixel = bytes.fromhex('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c636000020000050001e2265c8f0000000049454e44ae426082')
+
             def serve(route):
                 path = urlsplit(route.request.url).path
                 if path == '/':
                     route.fulfill(content_type='text/html', body='<div id="chat"></div><button id="jump"></button><div id="announce"></div>')
+                elif path.startswith('/api/projects/'):
+                    route.fulfill(content_type='image/png', body=pixel)
                 else:
                     route.fulfill(path=str(WEB / path.removeprefix('/static/')))
 
@@ -58,6 +62,16 @@ def main():
                 expect(row).to_have_count(1)
                 expect(row.locator('.activity-label')).to_have_text(f'Defined parameter · {name} = {value}')
                 expect(row.locator('.activity-summary')).to_have_text('Recorded in the workspace.')
+            # A tool that returned a picture to the model shows it inline, only from a same-origin project image URL.
+            emit('tool_input_start', operation_id='preview-1')
+            emit('tool_input_done', operation_id='preview-1', tool='path_preview', arguments={'path': 'M0 0 H10 V5 Z'})
+            emit('tool_image', operation_id='preview-1', image='0123456789abcdef.jpg', label='Path preview: bracket', url='/api/projects/0123456789abcdef/images/0123456789abcdef.jpg')
+            emit('tool_image', operation_id='preview-1', image='evil.jpg', label='x', url='https://evil.example/steal.jpg')
+            emit('tool_settled', operation_id='preview-1', status='completed', message='')
+            preview = page.locator('[data-operation-id="preview-1"] .activity-image')
+            expect(preview).to_have_count(1)
+            expect(preview.locator('img')).to_have_attribute('src', '/api/projects/0123456789abcdef/images/0123456789abcdef.jpg')
+            expect(preview).to_have_attribute('href', '/api/projects/0123456789abcdef/images/0123456789abcdef.jpg')
 
             for status in ('failed', 'cancelled'):
                 emit('tool_input_start', operation_id=status)

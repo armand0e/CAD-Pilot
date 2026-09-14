@@ -59,14 +59,18 @@ READ_SCRIPT = """() => {
   root.querySelectorAll('p,div,tr,li,h1,h2,h3,h4,section,br').forEach(el => el.prepend('\\n'));
   root.querySelectorAll('td,th').forEach(el => el.prepend(' | '));
   const text = (root.textContent || '').replace(/[ \\t]+/g,' ').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,400000);
-  const links = [...document.querySelectorAll('a[href]')].map(a => ({url:a.href,title:a.textContent.trim().slice(0,160)}))
+  // Hub pages repeat identical anchor text ("Mechanical drawings, PDF") under many
+  // product headings; the nearest preceding heading tells which product a link belongs to.
+  const heads = [...document.querySelectorAll('h1,h2,h3,h4')];
+  const headingFor = a => { let best = ''; for (const h of heads) { if (h.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) best = h.textContent.trim().slice(0,120); else break; } return best; };
+  const links = [...document.querySelectorAll('a[href]')].map(a => ({url:a.href,title:a.textContent.trim().slice(0,160),context:headingFor(a)}))
     .filter(a => a.title && /^https?:/.test(a.url));
   links.sort((a,b) => Number(/spec|drawing|download|technical|dimension|\\.pdf/i.test(b.title+b.url)) - Number(/spec|drawing|download|technical|dimension|\\.pdf/i.test(a.title+a.url)));
   const published = document.querySelector('meta[property="article:published_time"],meta[name="datePublished"],meta[itemprop="datePublished"],time[itemprop="datePublished"]');
   const published_at = published ? (published.content || published.getAttribute('datetime')) : null;
   const headings = [...clone.querySelectorAll('h1,h2,h3')].slice(0,80).map(h=>h.textContent.trim().slice(0,240));
   const dates = new Set(text.match(/\\b20\\d{2}-\\d{2}-\\d{2}\\b/g) || []);
-  return {title:document.title.slice(0,1000), text, links:links.slice(0,20), headings, published_at,
+  return {title:document.title.slice(0,1000), text, links:links.slice(0,160), headings, published_at,
     temporal_warning:dates.size>2?'This page mentions several dates; publication and event dates may differ.':null};
 }"""
 

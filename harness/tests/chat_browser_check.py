@@ -345,6 +345,12 @@ def run(base):
         expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
         assert page.locator('#composer-input').get_attribute('placeholder')==placeholder
         screenshot('08-question-open.png')
+        expect(page.locator('#composer-hint')).to_have_text('Your message answers the open question')
+        # First click selects (a note can be added), the second click confirms.
+        card.locator('.question-option').nth(1).click()
+        expect(card.locator('.question-option').nth(1)).to_have_attribute('aria-checked','true')
+        expect(card.locator('.question-submit')).to_be_enabled();expect(card.locator('.question-note')).to_be_visible()
+        assert not commands or commands[-1].get('t')!='answer'
         card.locator('.question-option').nth(1).click()
         page.wait_for_timeout(60)
         assert commands[-1]=={'t':'answer','question_id':'q-fixture','selected':['Pi 3B+'],'text':''},commands[-1]
@@ -379,6 +385,21 @@ def run(base):
             assert commands[-1]=={'t':'answer','question_id':qid,'selected':[],'text':'42 mm'},commands[-1]
             expect(page.locator('#composer-input')).to_have_value('Keep this chat draft')
             emit('answer',turn_id='turn-question',question_id=qid,selected=[],text='42 mm',summary='42 mm')
+        # A choice with a typed note, and a composer message while a question is open.
+        emit('question',turn_id='turn-question',question_id='q-note',question='Lid style?',options=[{'label':'Snap'},{'label':'Screws'}],multi_select=False)
+        noted=page.locator('.question-card[data-state="open"]')
+        noted.locator('.question-option').nth(0).click();noted.locator('.question-note').click()
+        noted.locator('.question-response').fill('but keep it easy to open');noted.locator('.question-submit').click();page.wait_for_timeout(60)
+        assert commands[-1]=={'t':'answer','question_id':'q-note','selected':['Snap'],'text':'but keep it easy to open'},commands[-1]
+        emit('answer',turn_id='turn-question',question_id='q-note',selected=['Snap'],text='but keep it easy to open',summary='Snap; but keep it easy to open')
+        emit('question',turn_id='turn-question',question_id='q-composer',question='Wall thickness?',options=[],multi_select=False)
+        expect(page.locator('.question-card[data-state="open"]')).to_have_count(1)
+        page.locator('#composer-input').fill('2.4 mm please');page.locator('#btn-send').click();page.wait_for_timeout(60)
+        assert commands[-1]=={'t':'answer','question_id':'q-composer','selected':[],'text':'2.4 mm please','attachments':[]},commands[-1]
+        expect(page.locator('.msg.user.pending-user')).to_have_count(0)
+        emit('answer',turn_id='turn-question',question_id='q-composer',selected=[],text='2.4 mm please',summary='2.4 mm please')
+        expect(page.locator('.question-card[data-state="completed"] .question-answer').last).to_have_text('You answered: 2.4 mm please')
+        page.locator('#composer-input').fill('Keep this chat draft')
         emit('done',turn_id='turn-question',reason='Fixture complete')
         emit('done',turn_id='turn-thinking',reason='Fixture complete');active=False
         page.reload(wait_until='networkidle');page.locator('.session-tab').first.click()

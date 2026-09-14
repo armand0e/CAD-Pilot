@@ -37,15 +37,20 @@ def main():
         expect(card).to_have_attribute('open','')
         source={'id':'drawing','title':'Mechanical drawing','url':'https://example.com/drawing.pdf','kind':'search_result'}
         progress={'agent_id':'child-one','task':'Fixture board','status':'running','started_at':100,'dimensions':['Board outline','Hole spacing'],'searches':1,'sources':[source]}
-        emit('research_agent',**progress,activity='Searching for documentation',detail='Fixture board mechanical dimensions')
+        step=lambda activity,detail='':{'at':100+len(page.evaluate('events')),'activity':activity,'detail':detail}
+        emit('research_agent',**progress,activity='Searched "Fixture board mechanical dimensions"',detail='8 leads: example.com',step=step('Searched "Fixture board mechanical dimensions"','8 leads: example.com'))
         expect(card.locator('.research-agent-goals')).to_contain_text('Hole spacing')
-        expect(card.locator('.research-agent-counts')).to_contain_text('1 source found')
-        emit('research_agent',**progress,activity='Reading the mechanical drawing',detail='https://example.com/drawing.pdf')
+        expect(card.locator('.research-agent-counts')).to_contain_text('1 source')
+        # Live activity (thinking, reading) updates the status line without adding trail entries.
+        emit('research_agent',**{k:v for k,v in progress.items() if k!='sources'},activity='Thinking about the next step',detail='',step=None,ephemeral=True)
+        expect(card.locator('.research-agent-activity')).to_have_text('Thinking about the next step')
+        expect(card.locator('.research-agent-step')).to_have_count(2)
+        emit('research_agent',**progress,activity='Read Mechanical drawing',detail='example.com · PDF · 3 pages',step=step('Read Mechanical drawing','example.com · PDF · 3 pages'))
         expect(card.locator('.research-agent-step')).to_have_count(3)
-        emit('research_agent',**progress,activity='Report needs correction',detail='dimensions[0]: the cited drawing image is unavailable')
+        emit('research_agent',**progress,activity='Report needs correction',detail='dimensions[0]: the cited drawing image is unavailable',step=step('Report needs correction','dimensions[0]: the cited drawing image is unavailable'))
         expect(card.locator('.research-agent-activity')).to_have_text('Report needs correction')
         expect(card.locator('.research-agent-detail')).to_contain_text('drawing image is unavailable')
-        emit('research_agent',**progress,activity='Reading the mechanical drawing',detail='https://example.com/drawing.pdf')
+        emit('research_agent',**progress,activity='Rendered drawing page 2',detail='Mechanical drawing',step=step('Rendered drawing page 2','Mechanical drawing'))
         expect(card.locator('.research-agent-step')).to_have_count(5)
         # Tabs work by keyboard; incoming progress must not reset selection or source focus.
         card.get_by_role('tab',name='Activity',exact=True).focus()
@@ -54,7 +59,7 @@ def main():
         card.get_by_role('link',name='Mechanical drawing').focus()
         page.evaluate('window.sourceLink=document.activeElement')
         progress['sources'][0]['kind']='pdf'
-        emit('research_agent',**progress,activity='Reviewing the sources',pages_read=1)
+        emit('research_agent',**progress,activity='Reviewing the sources',pages_read=1,step=None,ephemeral=True)
         assert page.evaluate('sourceLink===document.activeElement')
         expect(card.locator('.research-agent-source small')).to_have_text('Read')
         expect(card.get_by_role('tab',name='Sources (1)',exact=True)).to_have_attribute('aria-selected','true')
@@ -66,7 +71,10 @@ def main():
         expect(page.locator('[data-turn-id="first"] .research-agent')).to_have_count(1)
         expect(page.locator('[data-turn-id="steering"] .research-agent')).to_have_count(0)
         expect(card.locator('.research-agent-badge')).to_have_text('Running')
-        emit('research_agent',turn_id='steering',agent_id='child-one',task='Fixture board',status='completed',activity='Research complete',started_at=100,finished_at=130,sources=[source],summary='Board dimensions documented.',documented_dimensions=2,visual_dimensions=3)
+        emit('research_agent',turn_id='steering',agent_id='child-one',task='Fixture board',status='completed',activity='Research complete',started_at=100,finished_at=130,sources=[dict(source,cited=True)],summary='Board dimensions documented.',documented_dimensions=2,visual_dimensions=3,
+             findings=[{'name':'Board length','value':65,'unit':'mm','datum':'X extent','source_id':'drawing','evidence':'text_quote'},
+                       {'name':'Hole pitch','value':58,'unit':'mm','datum':'hole centres','source_id':'drawing','evidence':'drawing_image','page':2}],
+             step=step('Research complete','Board dimensions documented.'))
         expect(card.get_by_role('tab',name='Activity',exact=True)).to_have_attribute('aria-selected','true')
         emit('research_result',operation_id='call-one',operation='research_dimensions',summary='Board dimensions documented.',sources=[])
         emit('tool_settled',operation_id='call-one',status='completed')
@@ -94,15 +102,21 @@ def main():
         expect(page.locator('[data-operation-id="call-two"] .research-agent-badge')).to_have_text('Stopped')
         expect(card.locator('.research-agent-step')).to_have_count(step_count)
         card.locator('summary').click()
-        expect(card.get_by_role('tab',name='Findings',exact=True)).to_have_attribute('aria-selected','true')
+        expect(card.get_by_role('tab',name='Findings (2)',exact=True)).to_have_attribute('aria-selected','true')
         expect(card.locator('.research-agent-documented')).to_have_text('2 dimensions cited from text · 3 drawing readings to confirm')
         expect(card.locator('.research-agent-outcome')).to_have_text('Board dimensions documented.')
+        expect(card.locator('.research-agent-finding:not(.is-head)')).to_have_count(2)
+        expect(card.locator('.research-agent-finding-value').nth(1)).to_have_text('58 mm')
+        expect(card.locator('.research-agent-tag.is-visual')).to_have_text('Drawing p.2')
+        expect(card.locator('.research-agent-source[data-kind="cited"] small')).to_have_text('Cited')
+        expect(card.get_by_role('tab',name='Findings (2)',exact=True)).to_have_attribute('aria-selected','true')
         # An untouched active card shows findings on completion, including unresolved dimensions.
         emit('user',turn_id='third',text='Check the connector clearance too.')
         invoke('call-three','Connector clearance','third')
         emit('research_agent',turn_id='third',agent_id='child-three',task='Connector clearance',status='incomplete',activity='Research finished with unresolved questions',started_at=170,finished_at=190,documented_dimensions=0,unknowns=['Connector overhang is not documented.'])
         third=page.locator('[data-operation-id="call-three"]')
         expect(third.get_by_role('tab',name='Findings',exact=True)).to_have_attribute('aria-selected','true')
+        expect(third.locator('.research-agent-assumed')).to_be_hidden()
         expect(third.locator('.research-agent-unknowns')).to_have_text('Connector overhang is not documented.')
         expect(third.locator('.research-agent-badge')).to_have_text('Needs follow-up')
         page.screenshot(path='/tmp/cad-research-workspace-desktop.png')
@@ -123,7 +137,7 @@ def main():
         expect(fourth.locator('.research-agent-elapsed')).to_have_text('0:10')
         assert not errors,errors
         browser.close()
-        print('PASS: inline invocation cards, live activity trail, keyboard tabs, stable source focus, findings, multiple calls, steering ownership, reconnect/reload history and mobile layout')
+        print('PASS: inline invocation cards, explicit activity trail with live status, keyboard tabs, stable source focus, findings table, multiple calls, steering ownership, reconnect/reload history and mobile layout')
 
 
 if __name__=='__main__':main()

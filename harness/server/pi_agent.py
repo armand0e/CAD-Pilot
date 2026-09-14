@@ -18,9 +18,10 @@ from .attachments import image_part, image_path, saved_image_ids
 from .operations import TOOL_DEFINITIONS, compile_workspace, migrate, workspace
 from .source_workspace import SourceWorkspace
 from .workspace_tools import TOOLS as WORKSPACE_TOOLS, NAMES as WORKSPACE_NAMES, PI_NAMES, PROMPT as WORKSPACE_PROMPT, dispatch
-from .dimension_research import DELEGATE, REPORT, RESEARCH_TOOLS, PROMPT as RESEARCH_PROMPT, investigate, submit
+from .dimension_research import DELEGATE, investigate
 
 ROOT = Path(__file__).resolve().parents[1]
+PI_HIDDEN = {'ask'}  # legacy duplicate of ask_question; accepted in old ledgers, not offered to Pi
 
 
 def pi_image(path, **metadata):
@@ -153,11 +154,9 @@ class PiBridge:
         self.input_cursor = 0
 
     def active_names(self):
-        names = [t['function']['name'] for t in self.runner._tool_definitions()]
         if getattr(self.runner, 'research_profile', False):
-            if getattr(self.runner, 'dimension_report', None):
-                return []  # Pi finishes the response after the terminal report tool.
-            return [n for n in names if n in RESEARCH_TOOLS] + ['submit_research']
+            return self.runner.investigation.active_tools()
+        names = [t['function']['name'] for t in self.runner._tool_definitions() if t['function']['name'] not in PI_HIDDEN]
         if (self.ctx.get('saved', {}).get('design') or {}).get('format') == 'source-v1':
             from .operations import SOURCE_INCOMPATIBLE_TOOLS
             names = [n for n in names if n not in SOURCE_INCOMPATIBLE_TOOLS]
@@ -219,17 +218,18 @@ class PiBridge:
         self.model = model_config(self.runner)
         research = getattr(self.runner, 'research_profile', False)
         if research:
-            definitions = [t for t in TOOL_DEFINITIONS if t['function']['name'] in RESEARCH_TOOLS] + [REPORT]
+            definitions = self.runner.investigation.definitions()
+            system_prompt = self.runner.investigation.system_prompt()
         else:
             work = SourceWorkspace(self.ctx['project'])
             work.ensure()
             self.record_inputs(work)
-            definitions = TOOL_DEFINITIONS + WORKSPACE_TOOLS + [DELEGATE]
+            definitions = [t for t in TOOL_DEFINITIONS if t['function']['name'] not in PI_HIDDEN | {'inspect'}] + WORKSPACE_TOOLS + [DELEGATE]
+            definitions.append({'type': 'function', 'function': {'name': 'inspect',
+                'description': 'Read the current CAD workspace, agreed brief, saved research, image IDs, selection, measurements and rendered views. Use at the start of a task and after resuming.',
+                'parameters': {'type': 'object', 'properties': {}, 'additionalProperties': False}}})
+            system_prompt = WORKSPACE_PROMPT
         self.active_tools = self.active_names()
-        definitions = [t for t in definitions if t['function']['name'] != 'inspect']
-        definitions.append({'type': 'function', 'function': {'name': 'inspect',
-            'description': 'Read the current CAD workspace, agreed brief, saved research, image IDs, selection, measurements and rendered views. Use at the start of a task and after resuming.',
-            'parameters': {'type': 'object', 'properties': {}, 'additionalProperties': False}}})
         session_file = (self.runner.pi_session or {}).get('file')
         if session_file and not Path(session_file).resolve().is_relative_to((self.ctx['project'].path / 'pi/sessions').resolve()):
             session_file = None
@@ -243,7 +243,7 @@ class PiBridge:
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
             tools=definitions, activeTools=self.active_tools, workspace=not research,
-            systemPrompt=(RESEARCH_PROMPT if research else WORKSPACE_PROMPT) + '\nImages have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
+            systemPrompt=system_prompt + '\nImages have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
         self.runner._pi_new_session = False
         self.runner.pi_session = {'id': result['sessionId'], 'file': result['sessionFile'], 'runtime': 'pi-coding-agent', 'version': '0.85.1'}
         consumed = set(result.get('consumed', []))
@@ -387,9 +387,6 @@ class PiBridge:
         runner, ctx = self.runner, self.ctx
         work = SourceWorkspace(ctx['project'])
         research = runner._research_context(pages=False)
-        if getattr(runner, 'research_profile', False):
-            # Research remains isolated from the modeler's context as before.
-            return {'research': research, 'reference_images': [{k:v for k,v in i.items() if k != 'path'} for i in runner.attachments + runner.pending_images]}
         self.record_inputs(work)
         return work.context_result('inspect', {'head': ctx['expected_head'], 'workspace': ctx['ledger'], 'state': ctx['state'],
                 'source_workspace': work.describe(),
@@ -417,7 +414,7 @@ class PiBridge:
 
     async def _tool(self, message):
         runner, ctx = self.runner, self.ctx
-        content, failed = [], False
+        content, failed, final = [], False, False
         try:
             while runner.paused and not runner._stop.is_set():
                 runner._wake.clear()
@@ -425,16 +422,11 @@ class PiBridge:
                 await runner._interruptible(runner._wake.wait())
             if runner._stop.is_set():
                 raise asyncio.CancelledError
-            if getattr(runner, 'research_profile', False) and message['name'] not in RESEARCH_TOOLS:
-                raise ValueError('The dimension researcher has read-only research tools; CAD and workspace edits are unavailable')
-            if getattr(runner, 'research_profile', False) and getattr(runner, 'dimension_report', None):
-                # A model may have queued another call in the submission batch.
-                # The saved report is final; do not restart research or overwrite it.
-                content = [{'type':'text','text':'The research report is already saved. No further research was executed. Finish the response.'}]
+            if getattr(runner, 'research_profile', False):
+                content, failed = await runner.investigation.execute(message['name'], message['arguments'])
+                final = runner.investigation.done.is_set()
             elif message['name'] == 'inspect':
                 content = [{'type': 'text', 'text': json.dumps(self.inspect())}] + self.views()
-            elif message['name'] == 'submit_research' and getattr(runner, 'research_profile', False):
-                content = [{'type': 'text', 'text': json.dumps(submit(runner, message['arguments']))}]
             elif message['name'] == 'research_dimensions':
                 identity = self.streams.get(message['id'], {'operation_id': message['id'], 'turn_id': runner.turn_id})
                 runner.emit({'t': 'research_start', **identity, 'operation': 'research_dimensions',
@@ -452,6 +444,7 @@ class PiBridge:
                 if result.get('image'):
                     item = result['image']
                     content += [pi_image(image_path(ctx['project'].path, item['id']), id=item['id'], kind='inspection')]
+                    self.show_image(message['id'], item)
                 runner._save_conversation()
             else:
                 if message['name'] in ('research', 'research_images') and not runner.web_enabled:
@@ -470,6 +463,8 @@ class PiBridge:
                             continue
                         content += [{'type': 'text', 'text': item['label'] + ' (id: ' + item['id'] + ')'},
                                     pi_image(item['path'], id=item['id'], kind='inspection' if message['name'] == 'view_image' else 'research')]
+                        if message['name'] in ('view_image', 'research_images', 'research'):
+                            self.show_image(message['id'], item)
                 runner._save_conversation()
         except asyncio.CancelledError:
             content, failed = [{'type': 'text', 'text': 'Tool cancelled. Inspect the current revision before resuming.'}], True
@@ -482,9 +477,15 @@ class PiBridge:
             # Change Pi's next request immediately after a source build, including
             # builds in the middle of a tool batch (without waiting for steering).
             await self.sync_tools()
-            await self.send({'type': 'tool_result', 'id': message['id'], 'content': content, 'isError': failed})
+            await self.send({'type': 'tool_result', 'id': message['id'], 'content': content, 'isError': failed, **({'final': True} if final else {})})
         except (OSError, RuntimeError):
             pass
+
+    def show_image(self, call_id, item):
+        """Let the chat show the picture the model just received, by same-origin URL."""
+        identity = self.streams.get(call_id, {'operation_id': call_id, 'turn_id': self.runner.turn_id})
+        self.runner.emit({'t': 'tool_image', **identity, 'image': item['id'], 'label': item.get('label', ''),
+                          'url': f"/api/projects/{self.ctx['project'].id}/images/{item['id']}", 'timeline': False})
 
     async def close(self):
         if self.proc:

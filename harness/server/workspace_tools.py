@@ -17,10 +17,13 @@ def definition(name, description, properties, required=()):
             'parameters': {'type': 'object', 'properties': properties, 'required': list(required), 'additionalProperties': False}}}
 
 
+PLANE = {'type': 'string', 'enum': ['xy', 'xz', 'yz']}
 TOOLS = [
-    definition('create_path_body', 'Create an editable Python body module from a custom SVG path outline: M/L/H/V/C/S/Q/T/A/Z, relative forms, nested holes. Extrude it or revolve its radius/height profile. Returns a draft file; import its shape into model.py parts and cad_build. Curves remain native; SVG A arcs use cubic approximation. This does not replace the saved model.', {
+    definition('path_preview', 'Check an SVG path outline before building with it: returns bounds, area, winding, which subpaths are holes, warnings (self-intersections, unclosed outlines) and a rendered picture with a millimetre grid, start point and direction. Costs no CAD build. Use it for any hand-written outline; generators from cad_paths (rect, circle, slot, polygon, hexagon, d_shape, with_holes) produce valid paths directly.', {
+        'path': STRING, 'plane': PLANE, 'scale': NUMBER, 'flip_y': {'type': 'boolean'}, 'label': STRING}, ('path',)),
+    definition('create_path_body', 'Create an editable Python body module from an SVG path outline (M/L/H/V/C/S/Q/T/A/Z, relative forms, nested holes): extrude it, or revolve its radius/height profile drawn in XZ. The outline is validated and previewed first. Writes profiles/<name>.py (import its shape into model.py parts, then cad_build) and profiles/<name>.svg for OpenSCAD import(). Curves stay native; A arcs use cubic approximation. This does not replace the saved model.', {
         'name': STRING, 'path': STRING, 'operation': {'type':'string','enum':['extrude','revolve']},
-        'height': NUMBER, 'angle': NUMBER, 'plane': {'type':'string','enum':['xy','xz','yz']}, 'scale': NUMBER,
+        'height': NUMBER, 'angle': NUMBER, 'plane': PLANE, 'scale': NUMBER,
         'flip_y': {'type':'boolean'}}, ('name','path','operation')),
     definition('cad_build', 'Build the editable FreeCAD Python or OpenSCAD workspace, independently validate geometry, save a revision and open it. Read CAD_GUIDE.md first. Failed builds preserve draft files and the saved model.', {'entrypoint': STRING}, ('entrypoint',)),
     definition('cad_checkout', 'Refresh source files from the CURRENT saved revision after restoring or editing with typed tools. Unsaved source changes are protected unless discard_changes=true; never discard user changes without instruction.', {'discard_changes': {'type': 'boolean'}}),
@@ -72,10 +75,17 @@ or sourced without its evidence. Research missing product measurements, open the
 actual documentation, and examine supplied images; search snippets aren't verified
 dimensions and pictures without scale don't establish exact dimensions.
 When product dimensions are missing, delegate their investigation with
-research_dimensions. Give the exact part/revision, missing dimensions, relevant
-context and image IDs. Its separate Pi conversation returns documented dimensions,
-sources and unknowns without filling your context with the whole investigation.
-Carry its useful findings into the spec, keeping uncertainty and coordinate datums.
+research_dimensions: exact part/revision, the dimensions needed (most important
+first: outline, mounting holes, connector positions per edge; 3-6 items), relevant
+context and reference image IDs. It returns documented values with datums and
+quotes, drawing readings to confirm, and explicit unknowns, without filling your
+context. Independent parts can be delegated in the same turn. Carry its findings
+into the spec with their uncertainty and coordinate datums, then build with them;
+do not repeat its searches. Put its unknowns to the user in one ask_question (or
+state the assumption you will use) instead of chasing them yourself.
+Draw custom outlines as SVG paths: cad_paths generators (rect, circle, slot, polygon,
+hexagon, d_shape, with_holes) plus extrude/revolve/loft/pipe/cut_through. Run
+path_preview on any hand-written outline before building; it shows the shape.
 Use cad_inspect/cad_render for underside, sections, body isolation, actual faces,
 clearance and intersection checks. Reopen images with view_image as necessary.
 Use spec_update for small patches instead of rewriting every requirement. Retire
@@ -95,22 +105,65 @@ async def dispatch(bridge, name, args):
     project = ctx['project']
     work = SourceWorkspace(project)
     bridge.record_inputs(work)
-    if name == 'create_path_body':
+    if name in ('path_preview', 'create_path_body'):
+        from .svg_path import PathError, preview
+        from .attachments import image_path, store_image
+        plane, scale, flip_y = args.get('plane', 'xy'), args.get('scale', 1), bool(args.get('flip_y', False))
+        if not isinstance(args.get('path'), str) or len(args['path']) > 100000 or plane not in ('xy', 'xz', 'yz'):
+            raise ValueError('Provide SVG path data (up to 100000 characters) and a plane of xy, xz or yz')
+        if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not 0 < scale < 1e6:
+            raise ValueError('scale is millimetres per path unit (positive)')
+        try:
+            png, report = preview(args['path'], scale=scale, flip_y=flip_y, plane=plane)
+        except PathError as error:
+            raise ValueError('Invalid path: ' + str(error)) from None
+        label = args.get('label') if isinstance(args.get('label'), str) and args.get('label') else args.get('name') or 'outline'
+        image = store_image(project.path / 'research-images', png, f'Path preview: {label[:80]}')
+        runner.pending_images.append({**image, 'path': str(image_path(project.path, image['id']))})
+        result = {k: report[k] for k in ('subpaths', 'holes', 'bounds', 'area_mm2', 'start', 'warnings', 'valid')}
+        result['outlines'] = [{k: o[k] for k in ('index', 'role', 'winding', 'closed', 'bounds', 'area_mm2')} for o in report['outlines']]
+        result['image'] = image
+        result['plane'] = plane
+        if name == 'path_preview':
+            result['next'] = ('The attached picture shows the outline in plane coordinates. Fix any warning before extruding; '
+                              'then use cad_paths in model.py (extrude/revolve/loft/pipe/cut_through) or create_path_body.')
+            return result
         body = args['name']
-        if not isinstance(body, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', body) or not isinstance(args['path'], str) or len(args['path']) > 100000:
-            raise ValueError('Provide a body identifier and SVG path data (up to 100000 characters)')
+        if not isinstance(body, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', body):
+            raise ValueError('Provide a body identifier (letters, digits, underscores)')
+        if not report['valid']:
+            raise ValueError('The outline cannot become a solid: ' + ' '.join(report['warnings']))
         operation = args['operation']
         if operation not in ('extrude', 'revolve'):
             raise ValueError('Path body operation is extrude or revolve')
         path = 'profiles/' + body + '.py'
         if work.file(path).exists():
             raise ValueError('That profile already exists. Edit its source with Pi edit instead of overwriting it.')
-        params = {k: args[k] for k in ('scale','flip_y') if k in args}
-        params.update({'height': args['height'], 'plane': args.get('plane','xy')} if operation=='extrude' else {'angle': args.get('angle',360)})
-        content = f'from cad_paths import {operation}\n\noutline = {args["path"]!r}\nshape = {operation}(outline, ' + ', '.join(f'{k}={v!r}' for k,v in params.items()) + ')\n'
-        await work.fs({'action':'write','path':path,'content':content})
-        return {'file':path,'saved_geometry_changed':False,
-                'next':f'In model.py: from profiles.{body} import shape as {body}; then include "{body}": {body} in parts and call cad_build.'}
+        params = {k: args[k] for k in ('scale', 'flip_y') if k in args}
+        if operation == 'extrude':
+            if not isinstance(args.get('height'), (int, float)) or isinstance(args.get('height'), bool) or not args['height']:
+                raise ValueError('extrude needs a nonzero height')
+            params.update({'height': args['height'], 'plane': plane})
+        else:
+            params.update({'angle': args.get('angle', 360)})
+        content = (f'from cad_paths import {operation}\n\n# Preview {image["id"]}: {report["subpaths"]} subpath(s), {report["holes"]} hole(s), '
+                   f'{report["bounds"]["size"][0]} x {report["bounds"]["size"][1]} mm\noutline = {args["path"]!r}\nshape = {operation}(outline, '
+                   + ', '.join(f'{k}={v!r}' for k, v in params.items()) + ')\n')
+        await work.fs({'action': 'write', 'path': path, 'content': content})
+        # A self-contained SVG at the origin in physical millimetres: OpenSCAD's
+        # import() then reproduces the outline exactly, y up, regardless of dpi.
+        from .svg_path import parse, serialize, transform
+        (x0, y0), (w, h) = report['bounds']['min'], report['bounds']['size']
+        parsed, _ = parse(report['normalized'])
+        flipped = serialize(transform(parsed, flip_y=True, dx=-x0, dy=y0 + h))
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}mm" height="{h}mm" viewBox="0 0 {w} {h}">'
+               f'<path fill-rule="evenodd" d="{flipped}"/></svg>\n')
+        await work.fs({'action': 'write', 'path': 'profiles/' + body + '.svg', 'content': svg})
+        offset = f'translate([{x0}, {y0}]) ' if (x0 or y0) else ''
+        result.update(file=path, svg='profiles/' + body + '.svg', svg_origin=[x0, y0], saved_geometry_changed=False,
+                      next=f'In model.py: from profiles.{body} import shape as {body}; include "{body}": {body} in parts and call cad_build. '
+                           f'OpenSCAD: {offset}linear_extrude(height=H) import("profiles/{body}.svg"); (millimetres, y up; the file starts at the origin).')
+        return result
     if name == '__workspace':
         return await work.fs(args)
     if name == 'spec_read':

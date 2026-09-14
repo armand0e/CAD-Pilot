@@ -227,7 +227,7 @@ class OperationAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.runner.paused)
 
     async def test_pi_question_tool_delivers_the_user_answer(self):
-        chat = self.turns(('', [('ask', {'question': 'Which connector variant?'})]),
+        chat = self.turns(('', [('ask_question', {'question': 'Which connector variant?', 'options': [], 'multi_select': False})]),
                           ('Building the plate.', [('create_body', plate()['arguments'])]), ('Plate saved.', []))
         async def prepare(design): return stage_fixture(self.project, design)
         async def answer():

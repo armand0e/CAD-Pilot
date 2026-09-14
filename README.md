@@ -45,6 +45,14 @@ images, revision records, tool results and Pi's saved conversation remain intact
 after compaction. Oversized reference collections show a notice and remain
 available for the assistant to inspect in batches. Pi still owns compaction.
 
+Missing product dimensions are delegated to an isolated researcher with its own Pi
+session: it searches, pages through documentation, renders drawing pages on demand and
+returns one compact cited report within a call/time budget, shown as a live card with
+an activity trail, sources and a findings table. A typed message answers an open
+question directly. Custom outlines are SVG paths: `path_preview` renders and checks an
+outline before any build, and `cad_paths` offers generators plus extrude, revolve,
+loft, pipe and through-cuts. See [the Docker guide](harness/docker/README.md).
+
 FreeCAD edit checks use timestamped document observations so an older viewport
 snapshot cannot undo the acknowledgment of a saved revision. A refused CAD write
 returns a tool error to Pi; inspection and conversation remain available. Real

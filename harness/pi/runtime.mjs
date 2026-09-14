@@ -55,7 +55,10 @@ function invoke(name, args, signal, id = crypto.randomUUID()) {
 
 function tool(definition) {
   const fn = definition.function;
-  return defineTool({ ...fn, label: fn.name, executionMode: 'sequential',
+  // CAD tools mutate one document and stay sequential; read-only research tools
+  // may declare execution: 'parallel' so sibling lookups run concurrently.
+  const executionMode = definition.execution === 'parallel' ? 'parallel' : 'sequential';
+  return defineTool({ ...fn, label: fn.name, executionMode,
     execute: (id, args, signal) => invoke(fn.name, args, signal, id) });
 }
 
@@ -148,6 +151,16 @@ async function initialize(options) {
     thinkingLevel: config.model.thinking === false ? 'off' : (config.model.effort || 'medium'),
     noTools: 'builtin', customTools: [...config.tools.map(tool), ...(config.workspace ? workspaceTools(invoke) : [])], resourceLoader: loader,
     settingsManager: settings, sessionManager: manager }));
+  if (config.workspace) {
+    // Pi appends "Current working directory: <session cwd>" to every system prompt.
+    // The model works in the sandboxed /work, never in the host project directory,
+    // so rewrite that line whenever Pi rebuilds the prompt (tool changes included).
+    if (typeof session._rebuildSystemPrompt !== 'function') {
+      throw new Error('Pi API changed: AgentSession._rebuildSystemPrompt is missing. Update harness/pi/runtime.mjs for this Pi version.');
+    }
+    const rebuild = session._rebuildSystemPrompt.bind(session);
+    session._rebuildSystemPrompt = (names) => rebuild(names).replace(/Current working directory: [^\n]*/g, 'Current working directory: /work');
+  }
   session.setActiveToolsByName(config.activeTools);
   session.subscribe(event => {
     if (event.type === 'message_end' && event.message.role === 'assistant') {
@@ -247,7 +260,13 @@ lines.on('line', line => {
   let message;
   try { message = JSON.parse(line); }
   catch { send({ type: 'runtime_error', message: 'Invalid bridge JSON' }); return; }
-  if (message.type === 'tool_result') return pendingTools.get(message.id)?.(message);
+  if (message.type === 'tool_result') {
+    pendingTools.get(message.id)?.(message);
+    // A final result (a researcher's saved report) ends the run before the agent
+    // loop can start another model request on the same tick.
+    if (message.final) void session?.abort();
+    return;
+  }
   if (message.type === 'abort') {
     // Abort must never wait behind an in-flight compaction or prompt preflight.
     void session?.abort().then(() => send({ type: 'reply', id: message.id, result: {} }));

@@ -40,7 +40,9 @@ function syncControls() {
   $("run-progress").title = "This run only; earlier saved revisions remain in the Model panel. Research and retry attempts are not completed CAD operations or a percentage of the task.";
   $("run-fill").style.width = `${Math.min(100, state.completed / state.maxSteps * 100)}%`;
   $("view-hint").textContent = state.running ? "Agent has control · Esc to stop" : state.session ? "Click the canvas to interact · Your keyboard controls the CAD application" : "A shared canvas for you and your agent";
-  if (state.paused && state.running) $("composer-hint").textContent = "Send guidance to continue, or Take control to inspect and edit the CAD document";
+  const asking = !!(state.question && state.running);
+  if (asking) $("composer-hint").textContent = "Your message answers the open question";
+  else if (state.paused && state.running) $("composer-hint").textContent = "Send guidance to continue, or Take control to inspect and edit the CAD document";
   else if (state.phase === "awaiting" && state.running) $("composer-hint").textContent = "Send the next objective, or switch to Auto";
   else if (state.running) $("composer-hint").textContent = "Send changes at any time · Your guidance updates the plan";
   else if (state.canContinue && !state.freshTask) $("composer-hint").textContent = "Continue or refine this part · New task starts a separate goal";
@@ -654,10 +656,14 @@ function send() {
   const attachments = (state.attachments || []).filter(a => a.kind === 'image').map(a => a.id);
   if (!state.running) {
     sent = state.agentWS.send({ t: "start", task: text, mode: state.mode, new_task: state.freshTask, attachments });
+  } else if (state.question) {
+    // The model is waiting inside its question: a typed reply is the answer and
+    // lands in the question card, not a queued instruction behind it.
+    sent = state.agentWS.send({ t: "answer", question_id: state.question.question_id, selected: [], text, attachments });
   } else sent = state.agentWS.send({ t: "intent", text, attachments });
   if (sent) { state.attachments = []; renderAttachments(); }
   if (!sent) { toast("Connection interrupted. Please send again.", "err"); return; }
-  chatPanel.optimistic(text);
+  if (!state.question) chatPanel.optimistic(text);
   state.pending = true; state.pendingText = text; input.value = ""; autosize(); syncControls();
 }
 function renderAttachments() {
@@ -789,6 +795,9 @@ document.addEventListener('drop', async (event) => {
   event.preventDefault();
   for (const file of files) await uploadAttachment(file);
 });
+window.cadpilotCancelResearch = (agentId) => {
+  if (!state.agentWS?.send({ t: "cancel_research", agent_id: agentId })) toast("Connection interrupted. Try again.", "err");
+};
 window.cadpilotAnswer = (questionId, selected, text) => {
   if (!state.agentWS?.send({ t: "answer", question_id: questionId, selected, text })) { toast("Connection interrupted. Please answer again.", "err"); return; }
   state.pending = true; syncControls();

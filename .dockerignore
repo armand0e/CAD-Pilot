@@ -5,6 +5,7 @@
 !harness/
 !harness/server/
 !harness/server/*.py
+!harness/server/*.scad
 !harness/server/*.FCMacro
 !harness/server/*.cfg
 !harness/server/guides/

@@ -511,9 +511,12 @@ async def agent_socket(socket: WebSocket, session_id: str) -> None:
                 elif kind == "intent":
                     runner.submit_intent(message.get("text", ""), attachments=message.get("attachments") or [])
                 elif kind == "answer":
-                    runner.answer_question(message.get("question_id"), message.get("selected") or [], message.get("text") or "")
+                    runner.answer_question(message.get("question_id"), message.get("selected") or [], message.get("text") or "",
+                                           attachments=message.get("attachments") or [])
                 elif kind == "stop":
                     runner.stop()
+                elif kind == "cancel_research":
+                    runner.cancel_investigation(message.get("agent_id"))
                 elif kind == "mode":
                     runner.set_mode(message.get("mode"))
                 elif kind == 'web_setting':
