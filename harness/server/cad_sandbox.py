@@ -8,7 +8,8 @@ import signal
 ROOT = Path(__file__).resolve().parents[1]
 
 
-async def execute(directory, command, *, timeout=None, helpers=()):
+async def execute(directory, command, *, timeout=None, helpers=(), images=()):
+    """Run a command in the sandbox; `images` are (host directory, name) pairs mounted read-only at /work/images/<name>."""
     runtime = ROOT / 'apps/freecad-extracted'
     if not shutil.which('bwrap') or not (runtime / 'usr/bin/python').is_file():
         raise ValueError('CAD execution needs bubblewrap and the bundled FreeCAD runtime')
@@ -18,13 +19,18 @@ async def execute(directory, command, *, timeout=None, helpers=()):
             '--symlink', 'usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
             '--ro-bind', '/etc/passwd', '/etc/passwd', '--ro-bind', '/etc/group', '/etc/group',
             '--ro-bind', str(runtime), '/opt/cad', '--bind', str(directory), '/work', '--chdir', '/work',
-            '--setenv', 'PATH', '/opt/cad/usr/bin:/usr/bin:/bin', '--setenv', 'HOME', '/tmp',
+            # Models type python3; the bundled FreeCAD Python (numpy, PIL) answers to both names.
+            '--tmpfs', '/cadbin', '--symlink', '/opt/cad/usr/bin/python', '/cadbin/python3',
+            '--setenv', 'PATH', '/cadbin:/opt/cad/usr/bin:/usr/bin:/bin', '--setenv', 'HOME', '/tmp',
             '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'QT_QPA_PLATFORM', 'offscreen',
             '--setenv', 'OMP_NUM_THREADS', '1', '--setenv', 'OPENBLAS_NUM_THREADS', '1',
             '--setenv', 'PYTHONHOME', '/opt/cad/usr', '--setenv', 'PYTHONPATH', '/opt/cad/usr/lib:/']
     for name in helpers:
         args += ['--ro-bind', str(ROOT / 'server' / name), '/' + name]
     args += ['--ro-bind', str(ROOT / 'server/cad_paths.py'), '/cad_paths.py', '--ro-bind', str(ROOT / 'server/svg_path.py'), '/svg_path.py']
+    for host_dir, name in images:
+        if Path(host_dir).is_dir():
+            args += ['--ro-bind', str(host_dir), '/work/images/' + name]
     scad = ROOT / 'apps/openscad-extracted'
     if (scad / 'AppRun').is_file():
         args += ['--ro-bind', str(scad), '/opt/scad']

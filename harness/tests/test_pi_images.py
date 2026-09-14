@@ -106,7 +106,7 @@ class PiImageTests(unittest.IsolatedAsyncioTestCase):
             expected = pi_image(image_path(self.project.path, name))
             self.assertIn(f"data:{expected['mimeType']};base64,{expected['data']}", urls)
         shapes = [Image.open(io.BytesIO(base64.b64decode(url.split(',')[1]))).size for url in urls]
-        self.assertIn((40, 30), shapes)
+        self.assertIn((160, 120), shapes)  # the 40 x 30 crop is enlarged 4x for legibility
         history = pi_messages(self.runner)
         self.assertEqual(len(pixels(history, 'image')), 45)
         self.assertEqual(len([m for m in history if m['role'] == 'toolResult']), 15)

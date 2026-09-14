@@ -23,6 +23,12 @@ class FeatureLinkingTests(unittest.TestCase):
             self.assertEqual(result['subjects'], [subject])
             self.assertAlmostEqual(result['actual'], 30.0)
 
+    def test_stale_or_unknown_evidence_says_which_revision_it_belongs_to(self):
+        with self.assertRaisesRegex(ValueError, 'recorded on revision r1 but the current revision is r2'):
+            check_verification(row(['dome top']), evidence('Part1'), 'r2', lambda p: Path(p))
+        with self.assertRaisesRegex(ValueError, 'ev1 is not a recorded inspection'):
+            check_verification(row(['dome top']), {}, 'r1', lambda p: Path(p))
+
     def test_the_whole_source_result_covers_identifier_features_too(self):
         result = check_verification(row(['Part2', 'Part2:Face3']), evidence('CADPilotResult'), 'r1', lambda p: Path(p))
         self.assertEqual(result['subjects'], ['CADPilotResult'])

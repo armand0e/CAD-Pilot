@@ -57,7 +57,10 @@ in seconds. There is no five-minute ceiling. Connection failures and malformed J
 are still reported. Rebuild/restart to apply configuration-file changes.
 
 SearXNG uses `/search?format=json` for web and image search. Edit the generated
-`harness/.docker/searxng/settings.yml` to choose engines. Sources still pass the
+`harness/.docker/searxng/settings.yml` to choose engines; new installs enable bing,
+qwant, mojeek, yahoo and yep beside the defaults (brave, duckduckgo and google cse were
+all suspended by rate limits within one afternoon of live runs; add the `engines:` block
+to an existing file and restart the `searxng` service). Sources still pass the
 harness's public-URL checks; opened HTML uses sandboxed Chromium, and PDF parsing
 runs in a networkless worker. SearXNG replaces browser-based *search*; the small
 public-only proxy is retained for safe page reading. Engine throttling can still occur.
@@ -281,6 +284,13 @@ There is no custom native context compactor or secondary native agent loop.
 - An `ask_question` result carries `answer.evidence_id` (`input:<event id>`), the user
   input ID a specification row decided by that answer must cite, so the model no longer
   guesses IDs or loses a turn to "Unknown evidence" after every question.
+- Sandbox images and Python: `python3` now resolves to the bundled FreeCAD Python (numpy,
+  PIL) like `python`; the project's attached and research images are mounted read-only at
+  `/work/images/attachments/<id>` and `/work/images/research/<id>` with their
+  full-resolution `.original.png`, so a model can scale pixel measurements from a printed
+  dimension (the guide says printed labels remain the evidence). The mount points are not
+  workspace files. `view_image` crops shorter than 1000 px on their long side are enlarged
+  by an integer factor (up to 4x) so small dimension labels are legible to the vision model.
 - Reference files: `import_reference` accepts STEP, STL, DXF, SVG and IGES URLs (and
   uploads), recognises the file by content rather than by the URL's extension (an
   extensionless document link that redirects to a `.dxf` download works) and names it

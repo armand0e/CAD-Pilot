@@ -155,6 +155,21 @@ class KernelWorkspaceTests(WorkspaceTests):
         self.work.built(saved)
         return saved
 
+    async def test_python3_and_project_images_are_available_to_sandboxed_bash(self):
+        import io
+        from PIL import Image
+        from server.attachments import store_image
+        buffer = io.BytesIO(); Image.new('RGB', (2400, 900), 'white').save(buffer, 'PNG')
+        stored = store_image(self.project.path / 'attachments', buffer.getvalue(), 'drawing')
+        command = ("python3 -c \"from PIL import Image; import numpy; im = Image.open('/work/images/attachments/" + stored['id'] + "'); "
+                   "orig = Image.open('/work/images/attachments/" + stored['id'] + ".original.png'); print(im.size, orig.size)\"")
+        result = await self.work.fs({'action': 'bash', 'command': command})
+        self.assertEqual(result['exitCode'], 0, result['output'])
+        self.assertIn('(2000, 750) (2400, 900)', result['output'])
+        blocked = await self.work.fs({'action': 'bash', 'command': "touch /work/images/attachments/x 2>&1; echo exit=$?"})
+        self.assertIn('exit=1', blocked['output'])  # read-only
+        self.assertFalse(any(f['path'].startswith('images/') for f in self.work.files()))  # mount points are not workspace files
+
     async def test_curved_paths_holes_sections_and_geometric_clearance(self):
         code='''from cad_paths import extrude, revolve
 import FreeCAD as App

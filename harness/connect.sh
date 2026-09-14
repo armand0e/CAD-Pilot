@@ -44,6 +44,11 @@ if [ ! -f "$workspace_dir/searxng/settings.yml" ]; then
   search_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   printf 'use_default_settings: true\nserver:\n  secret_key: %s\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n' \
     "$search_secret" > "$workspace_dir/searxng/settings.yml"
+  # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
+  printf 'engines:\n' >> "$workspace_dir/searxng/settings.yml"
+  for engine in bing qwant mojeek yahoo yep; do
+    printf '  - name: %s\n    disabled: false\n' "$engine" >> "$workspace_dir/searxng/settings.yml"
+  done
 fi
 chmod 644 "$workspace_dir/searxng/settings.yml"
 # Stable project names also preserve volumes from the earlier ZIP installer.

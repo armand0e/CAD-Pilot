@@ -58,8 +58,11 @@ def check_verification(row, evidence, head, file):
     if not isinstance(check.get('evidence'), str):
         raise ValueError('Verification needs an actual inspection evidence ID')
     recorded = evidence.get(check['evidence'])
-    if not recorded or not head or recorded.get('revision') != head:
-        raise ValueError('Verification needs recorded geometry evidence for the current revision')
+    if not recorded:
+        raise ValueError(f"Verification evidence {check['evidence']} is not a recorded inspection; use a measure:/cad_inspect ID from this session")
+    if not head or recorded.get('revision') != head:
+        raise ValueError(f"Verification evidence {check['evidence']} was recorded on revision {recorded.get('revision')} but the current revision is "
+                         f"{head or 'unsaved'}: inspect again on {head or 'the saved revision'} or keep the row implemented")
     if kind == 'visual':
         if recorded.get('query') != 'render' or not recorded.get('image') or not isinstance(check.get('note'), str) or not check['note'].strip():
             raise ValueError('Visual verification needs a saved render and an observation; it does not verify dimensions')

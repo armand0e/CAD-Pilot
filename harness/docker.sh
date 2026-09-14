@@ -16,7 +16,9 @@ files = {
     root / 'compose.env': ('# Local Docker settings; overrides persist across builds.\nCADPILOT_PORT=7801\nCADPILOT_OWNER=admin\n', 0o600),
     root / 'searxng/settings.yml': (
         'use_default_settings: true\nserver:\n  secret_key: ' + secrets.token_hex(32) +
-        '\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n', 0o644),
+        '\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n'
+        # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
+        + 'engines:\n' + ''.join(f'  - name: {name}\n    disabled: false\n' for name in ('bing', 'qwant', 'mojeek', 'yahoo', 'yep')), 0o644),
 }
 for path, (body, mode) in files.items():
     try:

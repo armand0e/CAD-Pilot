@@ -30,6 +30,7 @@ def network_hint(output):
                 'files with import_reference, which places them under /work/references/ for FreeCAD import.')
     return ''
 CONTEXT_DIR = '.cadpilot-context'
+IMAGES_DIR = 'images'  # sandbox mount point for the project's images (read-only)
 # Required software resources must not live in the persisted knowledge volume:
 # an existing Docker volume hides files added to that directory in a new image.
 SERVER = Path(__file__).resolve().parent
@@ -71,8 +72,10 @@ class SourceWorkspace:
             return result
         self.file('.')
         for root, dirs, names in os.walk(self.path, followlinks=False):
-            if Path(root) == self.path and CONTEXT_DIR in dirs:
-                dirs.remove(CONTEXT_DIR)  # Regenerable tool records are not modeling source.
+            if Path(root) == self.path:
+                for skip in (CONTEXT_DIR, IMAGES_DIR):
+                    if skip in dirs:
+                        dirs.remove(skip)  # Regenerable tool records and read-only image mounts are not modeling source.
             for name in dirs + names:
                 path = self.file((Path(root) / name).relative_to(self.path).as_posix())
                 if path.is_dir():
@@ -414,7 +417,8 @@ class SourceWorkspace:
             timeout = args.get('timeout')
             if timeout is not None and (not isinstance(timeout, (int, float)) or not 0 < timeout <= 86400):
                 raise ValueError('timeout must be positive seconds (up to one day); omit for no wall-clock limit')
-            result = await execute(self.path, ['/bin/bash', '-lc', args['command']], timeout=timeout)
+            result = await execute(self.path, ['/bin/bash', '-lc', args['command']], timeout=timeout,
+                                   images=[(self.project.path / 'attachments', 'attachments'), (self.project.path / 'research-images', 'research')])
             if hint := network_hint(result['output']):
                 result['output'] += '\n' + hint
             self.files()

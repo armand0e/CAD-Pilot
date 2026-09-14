@@ -44,8 +44,11 @@ contains faceted geometry, not analytic curves. The original .scad and mesh are
 retained. For analytic STEP and detailed face inspection prefer FreeCAD Python.
 
 bash runs in an isolated sandbox: /work is writable, the CAD runtime is read-only;
-there is no network, host home or other project access. python is the bundled
-FreeCAD Python. Read pages and PDFs with research; download STEP/STL/DXF/SVG/IGES
+there is no network, host home or other project access. python (also python3) is the
+bundled FreeCAD Python with numpy and PIL. Attached and research images are readable
+at /work/images/attachments/<id> and /work/images/research/<id> (full-resolution
+originals as <id>.original.png beside them) for pixel measurements scaled from a
+printed dimension; printed labels remain the evidence, pixel scaling is an estimate. Read pages and PDFs with research; download STEP/STL/DXF/SVG/IGES
 files with import_reference. They appear under references/: Part.Shape().read(path)
 opens STEP/IGES, Mesh.Mesh(path) STL, importDXF.insert(path, doc.Name) adds DXF
 entities (circle edges give exact hole centres and radii) and importSVG.insert(path,

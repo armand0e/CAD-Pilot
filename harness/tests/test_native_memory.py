@@ -55,7 +55,7 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(p['type'] == 'image' for m in pi_messages(restored) if isinstance(m['content'], list) for p in m['content']), 1)
         # Crops are given in shown-image pixels (2000 wide here) and cut from the 2500-wide original.
         inspected = inspect_image(self.project.path, attached['id'], [1600, 0, 2000, 400])
-        self.assertEqual((inspected['original_width'], inspected['width'], inspected['shown_width']), (2500, 500, 2000))
+        self.assertEqual((inspected['original_width'], inspected['width'], inspected['shown_width']), (2500, 1000, 2000))  # 500 px crop enlarged 2x
 
     async def test_new_task_resets_native_memory_and_old_references(self):
         self.runner.agent_history = [{'role': 'user', 'content': 'Old task'}]
@@ -104,7 +104,7 @@ class NativeMemoryTests(unittest.IsolatedAsyncioTestCase):
         pixels = next(p for p in result['content'] if p['type'] == 'image')
         import base64
         with Image.open(io.BytesIO(base64.b64decode(pixels['data']))) as image:
-            self.assertEqual(image.size, (480, 480))  # 400 shown pixels of a 2400-wide original shown at 2000
+            self.assertEqual(image.size, (1440, 1440))  # 400 shown px = 480 original px, enlarged 3x for legibility
         self.assertIn('image_url', str(self.runner.pi_test_requests[-1]['messages']))
 
     async def test_steering_keeps_completed_tool_results_and_reaches_pi(self):

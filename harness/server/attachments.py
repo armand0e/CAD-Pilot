@@ -13,6 +13,7 @@ from PIL import Image, ImageOps
 
 NAME = re.compile(r'[a-f0-9]{16}\.jpg\Z')
 MAX_SIDE = 2000
+CROP_LEGIBLE = 1000  # crops shorter than this on their long side are enlarged by an integer factor (up to 4x)
 
 
 def store_image(directory, content, label='', max_side=MAX_SIDE):
@@ -114,6 +115,12 @@ def inspect_image(project_path, name, crop=None):
             raise ValueError(f'Crop must be [left, top, right, bottom] with right > left and bottom > top, within {shown_size[0]} x {shown_size[1]} pixels as shown')
         crop = [left, top, right, bottom]
         image = image.crop(crop)
+        # A small crop is asked for to read small print: enlarge it so labels are legible
+        # to the vision model instead of staying a dozen pixels tall.
+        longest = max(image.size)
+        if longest < CROP_LEGIBLE:
+            factor = min(4, -(-CROP_LEGIBLE // longest))
+            image = image.resize((image.width * factor, image.height * factor), Image.LANCZOS)
     buffer = io.BytesIO()
     image.save(buffer, 'PNG')
     stored = store_image(Path(project_path) / 'research-images', buffer.getvalue(), label=f'Inspection of {name}; crop={crop}')
