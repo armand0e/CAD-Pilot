@@ -170,6 +170,18 @@ class KernelWorkspaceTests(WorkspaceTests):
         self.assertIn('exit=1', blocked['output'])  # read-only
         self.assertFalse(any(f['path'].startswith('images/') for f in self.work.files()))  # mount points are not workspace files
 
+    async def test_gear_generator_builds_a_valid_meshing_solid(self):
+        # Involute spur gears are common and, unlike threads, mesh cleanly as ordinary
+        # extruded geometry. Outer diameter = module*teeth + 2*module = 44 mm here.
+        code = ('from cad_paths import extrude, with_holes, gear, circle\n'
+                'parts = {"Gear": extrude(with_holes(gear(module=2, teeth=20), circle(6, (0, 0))), 6)}\n')
+        await self.work.fs({'action': 'write', 'path': 'model.py', 'content': code})
+        saved = await self.build()
+        self.assertTrue(saved['geometry']['valid_solid'])
+        self.assertEqual(saved['geometry']['solid_count'], 1)
+        self.assertAlmostEqual(saved['geometry']['bounds_mm'][0], 44, delta=0.1)  # tips are flat chords just inside 44
+        self.assertAlmostEqual(saved['geometry']['bounds_mm'][2], 6, places=3)
+
     async def test_curved_paths_holes_sections_and_geometric_clearance(self):
         code='''from cad_paths import extrude, revolve
 import FreeCAD as App

@@ -153,3 +153,51 @@ def cut_through(shape, data, plane='xy', at=(0, 0, 0), depth=None, scale=1, flip
     if abs(result.Volume - shape.Volume) < 1e-9:
         raise ValueError('The cut removed no material: check the plane, position (at) and depth against the body')
     return result
+
+
+def gear(module, teeth, pressure_angle=20.0, samples=8):
+    """SVG path outline of an involute spur gear, ready to extrude. `module` is the pitch
+    diameter divided by the tooth count (mm/tooth), `teeth` >= 5, `pressure_angle` in degrees.
+    Standard proportions: addendum = module, dedendum = 1.25*module. Add a bore with
+    with_holes(gear(...), circle(bore_d, (0, 0))). Ordinary extruded geometry — it meshes
+    cleanly, unlike a helical thread."""
+    m = module
+    z = int(teeth)
+    if not isinstance(module, (int, float)) or not math.isfinite(m) or m <= 0:
+        raise ValueError('gear module must be positive (pitch diameter / teeth)')
+    if teeth != z or z < 5 or z > 400:
+        raise ValueError('gear teeth must be a whole number from 5 to 400')
+    if not 5 <= pressure_angle <= 35:
+        raise ValueError('gear pressure_angle must be 5-35 degrees')
+    alpha = math.radians(pressure_angle)
+    rp = m * z / 2.0                    # pitch radius
+    rb = rp * math.cos(alpha)           # base radius
+    ra = rp + m                         # addendum (outer) radius
+    rf = max(rp - 1.25 * m, 0.2 * m)    # root radius
+    inv_a = math.tan(alpha) - alpha
+    half = math.pi / (2.0 * z)          # tooth half-thickness angle at the pitch circle
+
+    def flank(sign):
+        # One involute flank from the root/base up to the addendum, sampled by radius.
+        start = max(rb, rf)
+        points = []
+        for i in range(samples + 1):
+            r = start + (ra - start) * i / samples
+            ratio = min(1.0, rb / r)
+            inv_r = math.tan(math.acos(ratio)) - math.acos(ratio)
+            phi = half + inv_a - inv_r     # angle from the tooth centre line
+            points.append((r * math.cos(sign * phi), r * math.sin(sign * phi)))
+        if rf < rb:                        # radial line down into the root gap
+            phi0 = half + inv_a
+            points.insert(0, (rf * math.cos(sign * phi0), rf * math.sin(sign * phi0)))
+        return points
+
+    pts = []
+    for k in range(z):
+        base = 2.0 * math.pi * k / z
+        cos_b, sin_b = math.cos(base), math.sin(base)
+        tooth = flank(-1) + list(reversed(flank(1)))   # up the right flank, over the tip, down the left
+        for x, y in tooth:
+            pts.append((x * cos_b - y * sin_b, x * sin_b + y * cos_b))
+    d = 'M %.4f %.4f ' % pts[0] + ' '.join('L %.4f %.4f' % p for p in pts[1:]) + ' Z'
+    return d
