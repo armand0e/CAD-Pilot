@@ -91,7 +91,7 @@ a picture with a millimetre grid, the start point and the direction of travel.
 Generators return valid paths directly; combine them and check the preview.
 
 ```python
-from cad_paths import extrude, revolve, loft, pipe, cut_through, gear, rect, circle, slot, polygon, hexagon, d_shape, with_holes
+from cad_paths import extrude, revolve, loft, pipe, cut_through, gear, rack, rect, circle, slot, polygon, hexagon, d_shape, with_holes
 import FreeCAD as App
 
 plate = extrude(with_holes(rect(60, 40, 4), circle(3.4, (8, 8)), circle(3.4, (52, 32)), slot(14, 4, (23, 18))), 3)
@@ -99,6 +99,7 @@ housing = extrude("M0 0 L40 0 C50 0 55 10 50 20 Q40 35 20 25 L0 20 Z", height=8)
 housing = cut_through(housing, rect(10, 4, 1), plane='xz', at=(15, 0, 2))     # port opening through the front wall
 nut = extrude(hexagon(5.5), 2.4)                                                 # M3 nut pocket cutter
 spur = extrude(with_holes(gear(module=2, teeth=20), circle(6, (0, 0))), 6)       # 20-tooth gear, 6 mm bore
+bar = extrude(rack(module=2, teeth=8), 6)                                        # matching gear rack (rack-and-pinion)
 knob = revolve("M0 0 L10 0 Q15 10 10 20 L0 20 Z")                               # radius/height profile in XZ, around +Z
 vase = loft([rect(40, 30, 6, center=True), circle(24), circle(36)], [0, 40, 70])
 handle = pipe("M0 0 C0 30 60 30 60 0", diameter=8, plane='xz')                  # round bar along an open path

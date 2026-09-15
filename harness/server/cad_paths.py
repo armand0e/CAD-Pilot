@@ -201,3 +201,33 @@ def gear(module, teeth, pressure_angle=20.0, samples=8):
             pts.append((x * cos_b - y * sin_b, x * sin_b + y * cos_b))
     d = 'M %.4f %.4f ' % pts[0] + ' '.join('L %.4f %.4f' % p for p in pts[1:]) + ' Z'
     return d
+
+
+def rack(module, teeth, pressure_angle=20.0, base=None):
+    """SVG path outline of an involute gear rack (the straight mate for a spur gear of the
+    same module), ready to extrude. Teeth run along +x with crests up at +y; `module` is the
+    pitch (pi*module apart), `teeth` the count, `base` the solid bar height below the roots
+    (default 2*module). Pairs with gear(module, ...). Ordinary geometry; meshes cleanly."""
+    m = module
+    n = int(teeth)
+    if not isinstance(module, (int, float)) or not math.isfinite(m) or m <= 0:
+        raise ValueError('rack module must be positive')
+    if teeth != n or n < 1 or n > 400:
+        raise ValueError('rack teeth must be a whole number from 1 to 400')
+    if not 5 <= pressure_angle <= 35:
+        raise ValueError('rack pressure_angle must be 5-35 degrees')
+    base_h = 2.0 * m if base is None else base
+    if not isinstance(base_h, (int, float)) or base_h <= 0:
+        raise ValueError('rack base must be a positive height')
+    p = math.pi * m                                   # circular pitch
+    add, ded, ta = m, 1.25 * m, math.tan(math.radians(pressure_angle))
+    y_top, y_root, y_bottom = add, -1.25 * m, -1.25 * m - base_h
+    length = n * p
+    top = []
+    for i in range(n):
+        xc = (i + 0.5) * p
+        top += [(xc - (p / 4 + ded * ta), y_root), (xc - (p / 4 - add * ta), y_top),
+                (xc + (p / 4 - add * ta), y_top), (xc + (p / 4 + ded * ta), y_root)]
+    pts = [(0.0, y_bottom), (length, y_bottom), (length, y_root)] + list(reversed(top)) + [(0.0, y_root)]
+    d = 'M %.4f %.4f ' % pts[0] + ' '.join('L %.4f %.4f' % q for q in pts[1:]) + ' Z'
+    return d

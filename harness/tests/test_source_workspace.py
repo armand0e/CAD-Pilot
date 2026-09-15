@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import json
+import math
 from pathlib import Path
 import shutil
 import tempfile
@@ -181,6 +182,16 @@ class KernelWorkspaceTests(WorkspaceTests):
         self.assertEqual(saved['geometry']['solid_count'], 1)
         self.assertAlmostEqual(saved['geometry']['bounds_mm'][0], 44, delta=0.1)  # tips are flat chords just inside 44
         self.assertAlmostEqual(saved['geometry']['bounds_mm'][2], 6, places=3)
+
+    async def test_rack_generator_builds_a_valid_meshing_solid(self):
+        # The straight mate for the spur gear; ordinary trapezoidal-tooth geometry.
+        code = ('from cad_paths import extrude, rack\n'
+                'parts = {"Rack": extrude(rack(module=2, teeth=8), 6)}\n')
+        await self.work.fs({'action': 'write', 'path': 'model.py', 'content': code})
+        saved = await self.build()
+        self.assertTrue(saved['geometry']['valid_solid'])
+        self.assertEqual(saved['geometry']['solid_count'], 1)
+        self.assertAlmostEqual(saved['geometry']['bounds_mm'][0], 8 * math.pi * 2, delta=0.05)  # length = teeth*pi*module
 
     async def test_curved_paths_holes_sections_and_geometric_clearance(self):
         code='''from cad_paths import extrude, revolve
