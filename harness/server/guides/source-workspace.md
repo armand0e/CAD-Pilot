@@ -39,13 +39,27 @@ retains the construction logic. Source is the authority for subsequent agent edi
 A workspace seeded from an existing model includes base.FCStd and a script that
 opens that frozen base. Do not replace the base with each build (edits would compound).
 
+Raised or engraved text uses Draft ShapeString (Part has no makeText):
+
+```python
+import FreeCAD as App, Part, Draft
+doc = App.newDocument()
+glyphs = Draft.make_shapestring(String="CAD",
+    FontFile="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", Size=10.0)
+doc.recompute()
+label = glyphs.Shape.extrude(App.Vector(0, 0, 1))   # 1 mm tall; fuse onto a body to raise, cut to engrave
+```
+
+TrueType fonts are under /usr/share/fonts/truetype (dejavu, liberation).
+
 OpenSCAD source is compiled with openscad to STL. The native FCStd/STEP conversion
 contains faceted geometry, not analytic curves. The original .scad and mesh are
 retained. For analytic STEP and detailed face inspection prefer FreeCAD Python.
 
 bash runs in an isolated sandbox: /work is writable, the CAD runtime is read-only;
 there is no network, host home or other project access. python (also python3) is the
-bundled FreeCAD Python with numpy and PIL. Attached and research images are readable
+bundled FreeCAD Python with numpy and PIL. Import FreeCAD before Part in every script
+and one-liner (`import FreeCAD, Part`): importing Part on its own segfaults the interpreter. Attached and research images are readable
 at /work/images/attachments/<id> and /work/images/research/<id> (full-resolution
 originals as <id>.original.png beside them) for pixel measurements scaled from a
 printed dimension; printed labels remain the evidence, pixel scaling is an estimate. Read pages and PDFs with research; download STEP/STL/DXF/SVG/IGES
