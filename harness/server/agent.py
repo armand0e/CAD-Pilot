@@ -1664,7 +1664,9 @@ class AgentRunner:
             except (ValueError, OSError):
                 continue
         if project and expected_head:
-            for view in ('iso', 'top', 'front'):
+            entry = next((r for r in project.read()['revisions'] if r['id'] == expected_head), {})
+            names = [n[5:-4] for n in sorted(entry.get('sha256', {})) if n.startswith('view-') and n.endswith('.png')]
+            for view in (names or ['iso', 'top', 'front'])[:4]:
                 try:
                     parts.append(image_part(project.file(expected_head, f'view-{view}.png')))
                     labels.append(f'saved model view: {view} ({expected_head})')
@@ -1697,7 +1699,9 @@ class AgentRunner:
         if not head or int(self.config.get('planner', {}).get('max_images_per_request') or 0) <= 0:
             return []
         parts = []
-        for view in ('iso', 'front', 'top', 'right'):
+        entry = next((r for r in self.session.project.read()['revisions'] if r['id'] == head), {})
+        names = [n[5:-4] for n in sorted(entry.get('sha256', {})) if n.startswith('view-') and n.endswith('.png')]
+        for view in (names or ['iso', 'front', 'top', 'right'])[:4]:
             try:
                 data = self.session.project.file(head, f'view-{view}.png').read_bytes()
             except (OSError, ValueError):

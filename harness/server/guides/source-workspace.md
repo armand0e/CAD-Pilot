@@ -48,7 +48,12 @@ parts = {"Case": case}
 ```
 
 Export with parts = {"StableName": shape_or_document_object}; alternatively result
-can hold a shape. Name parts meaningfully and keep names stable between builds.
+can hold a shape. Optionally set views = {"name": [dx, dy, dz], ...} to choose the
+saved render angles for this model (up to 8): each value is a camera direction from
+the object toward the camera, the same convention as cad_render (e.g. [1,-1,1] iso,
+[0,-1,0] front, [0,0,1] top, [1,-0.4,0.3] a three-quarter nose view). Pick the angles
+that best show your object instead of the default iso/top/front/right; they become the
+saved views (cad:rNNNN:name) and the ones reviewed each turn. Name parts meaningfully and keep names stable between builds.
 Native output is validated independently in a fresh kernel and exported to FCStd,
 STEP, STL and rendered views. FCStd contains named result solids; Python source
 retains the construction logic. Source is the authority for subsequent agent edits.

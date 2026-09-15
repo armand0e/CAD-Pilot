@@ -415,17 +415,22 @@ class PiBridge:
                 'selection': runner._selection_context(ctx['geometry'], ctx['state']),
                 'references': [{k: v for k, v in image.items() if k != 'path'} for image in runner.attachments + runner.pending_images],
                 'image_archive': saved_image_ids(ctx['project'].path),
-                'saved_views': [{'revision': revision['id'], 'images': [f"cad:{revision['id']}:{view}" for view in ('iso', 'top', 'front', 'right')
-                                if f'view-{view}.png' in revision['sha256']]} for revision in ctx['project'].read()['revisions']]})
+                'saved_views': [{'revision': revision['id'], 'images': [f"cad:{revision['id']}:{n[5:-4]}"
+                                for n in sorted(revision['sha256']) if n.startswith('view-') and n.endswith('.png')]}
+                                for revision in ctx['project'].read()['revisions']]})
 
     def views(self):
         content = []
-        if self.ctx['expected_head']:
-            for view in ('iso', 'top', 'front'):
+        head = self.ctx['expected_head']
+        if head:
+            entry = next((r for r in self.ctx['project'].read()['revisions'] if r['id'] == head), {})
+            names = [n[5:-4] for n in sorted(entry.get('sha256', {})) if n.startswith('view-') and n.endswith('.png')]
+            # The views the model chose (or the four defaults); a compact set for context.
+            for view in (names or ['iso', 'top', 'front'])[:4]:
                 try:
-                    image = pi_image(self.ctx['project'].file(self.ctx['expected_head'], f'view-{view}.png'),
-                                     id=f"cad:{self.ctx['expected_head']}:{view}", kind='cad', revision=self.ctx['expected_head'], view=view)
-                    content += [{'type': 'text', 'text': f"CAD view {view}, revision {self.ctx['expected_head']}"}, image]
+                    image = pi_image(self.ctx['project'].file(head, f'view-{view}.png'),
+                                     id=f"cad:{head}:{view}", kind='cad', revision=head, view=view)
+                    content += [{'type': 'text', 'text': f"CAD view {view}, revision {head}"}, image]
                 except (OSError, ValueError):
                     continue
         return content

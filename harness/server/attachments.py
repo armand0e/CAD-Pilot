@@ -51,7 +51,7 @@ def store_image(directory, content, label='', max_side=MAX_SIDE):
 
 
 def image_path(project_path, name):
-    if isinstance(name, str) and (cad := re.fullmatch(r'cad:(r[0-9]{4}):(iso|top|front|right)', name)):
+    if isinstance(name, str) and (cad := re.fullmatch(r'cad:(r[0-9]{4}):([a-z0-9_-]{1,24})', name)):
         from .projects import Project
         root = Path(project_path)
         return Project(root.parent, root.name).file(cad[1], f'view-{cad[2]}.png')

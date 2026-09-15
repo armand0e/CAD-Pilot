@@ -102,7 +102,8 @@ def build():
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,
               'representation': 'faceted mesh converted to BREP' if design['language'] == 'openscad' else 'analytic BREP',
-              'views': render_views(mesh, '/work')}
+              'views': render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
+                                                          if Path('build-views.json').is_file() else None))}
     try:
         report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
     except ValueError as error:

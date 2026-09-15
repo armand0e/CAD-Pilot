@@ -221,8 +221,8 @@ function renderProject(project) {
   const g = project.geometry;
   $('model-measurements').textContent = g ? `${g.bounds_mm.map(v=>Number(v.toFixed(3))).join(' × ')} mm · ${g.volume_mm3.toFixed(2)} mm³ · ${g.representation || `${g.cuts?.length||0} material-removing cuts`}` : 'Describe a part to create an editable model and exports.';
   const views = $('model-views'); if (views) { views.replaceChildren();
-    if (project.head && project.geometry?.views?.length) { for (const name of ['iso', 'top', 'front']) { if (!project.geometry.views.includes(name)) continue;
-      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.loading = 'lazy'; views.append(img); } } }
+    if (project.head && project.geometry?.views?.length) { for (const name of project.geometry.views.slice(0, 6)) {
+      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.title = `${name} view`; img.loading = 'lazy'; views.append(img); } } }
   $('model-parameters').replaceChildren();
   for (const p of project.design?.parameters || []) {
     const item = document.createElement('span'); item.textContent = `${p.name}: ${p.value}`; $('model-parameters').append(item);

@@ -19,3 +19,20 @@ for index, (name, value) in enumerate(parts.items()):
     shape.exportBrep(file)
     rows.append({'name': str(name), 'file': file})
 Path('build-parts.json').write_text(json.dumps(rows))
+
+# Optional model-chosen saved views: views = {"name": [dx, dy, dz], ...}, each a camera
+# direction (object -> camera, as cad_render). Validated here; the kernel renders them.
+import re as _re
+views = namespace.get('views')
+if isinstance(views, dict) and views:
+    chosen = {}
+    for name, direction in list(views.items())[:8]:
+        key = _re.sub(r'[^a-z0-9_-]+', '-', str(name).lower()).strip('-')[:24]
+        try:
+            vec = [float(c) for c in direction]
+        except (TypeError, ValueError):
+            continue
+        if key and len(vec) == 3 and all(c == c and abs(c) != float('inf') for c in vec) and any(vec):
+            chosen[key] = vec
+    if chosen:
+        Path('build-views.json').write_text(json.dumps(chosen))

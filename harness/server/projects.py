@@ -57,8 +57,9 @@ def reference_name(requested_url, final_url, content):
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('design.json', 'geometry.json', 'model.FCStd', 'model.scad', 'model.step', 'model.stl')
-OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'design-spec.json', 'parts.zip',
-                  'view-iso.png', 'view-top.png', 'view-front.png', 'view-right.png')
+OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'design-spec.json', 'parts.zip')
+# Saved render views: the four defaults plus any the model chose (view-<name>.png).
+VIEW_RE = re.compile(r'view-[a-z0-9_-]{1,24}\.png')
 REFERENCE_DIR = 'references'
 
 
@@ -102,7 +103,7 @@ class Project:
         return json.loads((self.path / 'project.json').read_text())
 
     def file(self, revision, name):
-        if name not in FILES + OPTIONAL_FILES or not isinstance(revision, str) or not re.fullmatch(r'r[0-9]{4}', revision):
+        if (name not in FILES + OPTIONAL_FILES and not VIEW_RE.fullmatch(name)) or not isinstance(revision, str) or not re.fullmatch(r'r[0-9]{4}', revision):
             raise ValueError('Unknown artifact')
         metadata = next((r for r in self.read()['revisions'] if r['id'] == revision), None)
         path = self.path / revision / name
@@ -225,7 +226,8 @@ class Project:
                      'compiler_sha256': {name: hashlib.sha256((ROOT / 'server' / name).read_bytes()).hexdigest()
                                          for name in ('design.py', 'cad_worker.py', 'stl_audit.py')},
                      'sha256': {name: hashlib.sha256((stage / name).read_bytes()).hexdigest()
-                                for name in FILES + tuple(n for n in OPTIONAL_FILES if (stage / n).is_file())}}
+                                for name in FILES + tuple(n for n in OPTIONAL_FILES if (stage / n).is_file())
+                                + tuple(sorted(p.name for p in stage.glob('view-*.png') if VIEW_RE.fullmatch(p.name)))}}
             if (stage / 'workspace.json').is_file():
                 entry['operation_contract'] = 'native-operations-v1'
                 entry['operation_compiler_sha256'] = hashlib.sha256((ROOT / 'server/operations.py').read_bytes()).hexdigest()
@@ -250,7 +252,7 @@ class Project:
         stage = Path(tempfile.mkdtemp(prefix='.build-', dir=self.path))
         try:
             entry = next((r for r in self.read()['revisions'] if r['id'] == revision), {})
-            for name in FILES + tuple(n for n in OPTIONAL_FILES if n in entry.get('sha256', {})):
+            for name in entry.get('sha256', {}):
                 shutil.copyfile(self.file(revision, name), stage / name)
             return self.commit(stage, expected_head, restored_from=revision)
         finally:

@@ -72,6 +72,9 @@ class OperationTests(unittest.TestCase):
                 if not path.exists():
                     raise OSError('missing')
                 return path
+
+            def read(self):
+                return {'revisions': [{'id': 'r0001', 'sha256': {f'view-{v}.png': 'x' for v in ('iso', 'front', 'top', 'right')}}]}
         fake = SimpleNamespace(config={'planner': {'max_images_per_request': 16}},
                                session=SimpleNamespace(project=FakeProject()))
         parts = AgentRunner._revision_view_parts(fake, 'r0001', limit=4)

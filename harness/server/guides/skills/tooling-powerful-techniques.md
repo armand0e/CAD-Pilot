@@ -43,10 +43,25 @@ Use inspect to VERIFY the numbers you care about, then record a measurement chec
 design-spec.json with a JSON pointer into the inspect result (see CAD_GUIDE.md). This
 measure-then-record loop is what separates a claimed fit from a proven one.
 
+## Choose the saved views for your object
+
+The four default saved views (iso/top/front/right) are not always the ones that show
+your object. In model.py set views = {"name": [dx, dy, dz], ...} (up to 8) to choose
+the saved render angles: each value is a camera direction (object -> camera, as
+cad_render). For an aircraft, save a nose three-quarter, a planform (top) and a side
+profile; for a mug, a three-quarter and a straight-on. These become the saved views
+(cad:rNNNN:name) shown in the app and reviewed each turn - aim them at what matters.
+
+```python
+parts = {"Plane": plane}
+views = {"nose": [1, -0.6, 0.35], "planform": [0, 0, 1], "profile": [0, -1, 0], "tail": [-1, -0.5, 0.3]}
+```
+
 ## cad_render: see exactly what you need
 
 - Named views (iso/top/front/back/left/right) or a custom camera direction (from
-  object toward camera) for any angle.
+  object toward camera) for any angle. This is ad-hoc inspection; `views` above sets
+  the SAVED set that persists and is reviewed.
 - bodies=[...] isolates parts; highlight a body or Body:FaceN to point at a feature.
 - section={axis:"z",at:10,keep:"below"} renders a cross-section - picture only, the
   saved geometry is untouched - to inspect internal fit visually.

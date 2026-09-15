@@ -218,9 +218,14 @@ def face_table(shape, limit=400):
     return rows
 
 
-def render_views(mesh, directory, size=560):
+DEFAULT_VIEWS = {'iso': (1.0, -1.0, 1.0), 'top': (0.0, 0.0, 1.0), 'front': (0.0, -1.0, 0.0), 'right': (1.0, 0.0, 0.0)}
+
+
+def render_views(mesh, directory, size=560, views=None):
     """Orthographic shaded views of the exported mesh: painter's algorithm with PIL
-    polygon fills (C speed), numpy only for the transforms. No display needed."""
+    polygon fills (C speed), numpy only for the transforms. No display needed.
+    views maps a name to a camera direction [dx,dy,dz] (from the object toward the
+    camera, the same convention as cad_render); omitted, the four standard views render."""
     import numpy as np
     from PIL import Image, ImageDraw
     points, facets = mesh.Topology
@@ -236,13 +241,18 @@ def render_views(mesh, directory, size=560):
     lengths = np.linalg.norm(normals, axis=1)
     keep = lengths > 1e-12
     normals[keep] /= lengths[keep][:, None]
-    views = {'iso': (35.264, -45.0), 'top': (0.0, 0.0), 'front': (90.0, 0.0), 'right': (90.0, -90.0)}
+    views = views or DEFAULT_VIEWS
     written = []
-    for name, (tilt, turn) in views.items():
-        a, b = math.radians(tilt), math.radians(turn)
-        rz = np.array([[math.cos(b), -math.sin(b), 0], [math.sin(b), math.cos(b), 0], [0, 0, 1]])
-        rx = np.array([[1, 0, 0], [0, math.cos(a), -math.sin(a)], [0, math.sin(a), math.cos(a)]])
-        rotation = rx @ rz
+    for name, direction in views.items():
+        forward = np.array(direction, dtype=float)
+        if np.linalg.norm(forward) < 1e-9:
+            continue
+        forward /= np.linalg.norm(forward)
+        # Same camera convention as cad_render: up is +Z unless looking near-vertical.
+        up = np.array([0.0, 0.0, 1.0]) if abs(forward[2]) < 0.99 else np.array([0.0, 1.0, 0.0])
+        right_v = np.cross(up, forward); right_v /= np.linalg.norm(right_v)
+        up = np.cross(forward, right_v)
+        rotation = np.array([right_v, up, forward])
         cam = (vertices - center) @ rotation.T
         scale = (size * 0.84) / extent
         xy = cam[:, :2] * scale + size / 2
