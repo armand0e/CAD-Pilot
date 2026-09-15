@@ -237,82 +237,159 @@ export class ActivityTimeline {
   }
 }
 
-/** Append-only text renderer: existing chunks and selections are never replaced.
- * Supports paragraphs/newlines, inline emphasis/code and real source citations.
- * Partial citation/emphasis delimiters are buffered across transport fragments.
- */
+/* ---- Markdown rendering ------------------------------------------------------
+ * A compact, dependency-free Markdown renderer that builds DOM directly (never
+ * innerHTML, so model text can't inject markup). Supports headings, GFM tables,
+ * ordered/unordered/nested lists, blockquotes, fenced code, thematic breaks and
+ * inline bold/italic/code/links plus real [web_…] source citations. The answer
+ * is re-rendered from the full text on each streamed update, but reconciled
+ * block-by-block so settled paragraphs never reflow and citations keep state. */
+function splitRow(line) {
+  return line.trim().replace(/^\|/,'').replace(/\|$/,'').split(/(?<!\\)\|/).map(c=>c.trim().replace(/\\\|/g,'|'));
+}
+const TABLE_SEP=/^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/;
+function isBlockStart(line,next) {
+  return /^(#{1,6})\s/.test(line) || /^\s*([-*+]|\d+[.)])\s/.test(line) || /^\s*>/.test(line)
+    || /^\s*(`{3,}|~{3,})/.test(line) || /^\s*([-*_])\s*(\1\s*){2,}$/.test(line)
+    || (line.includes('|') && next!=null && TABLE_SEP.test(next));
+}
+function parseBlocks(src) {
+  const lines=(src||'').replace(/\r\n?/g,'\n').split('\n');
+  const blocks=[]; let i=0;
+  while(i<lines.length) {
+    const line=lines[i];
+    if(!line.trim()){i++;continue;}
+    const fence=line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+    if(fence){
+      const marker=fence[2][0],len=fence[2].length,lang=fence[3].trim(),body=[];i++;
+      while(i<lines.length && !(/^\s*([`~]{3,})\s*$/.test(lines[i]) && lines[i].trim()[0]===marker && lines[i].trim().length>=len)){body.push(lines[i]);i++;}
+      const closed=i<lines.length;if(closed)i++;
+      blocks.push({type:'code',lang,text:body.join('\n'),key:`code:${lang}:${closed}:${body.join('\n')}`});continue;
+    }
+    const h=line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){blocks.push({type:'heading',level:h[1].length,text:h[2].replace(/\s+#+\s*$/,''),key:`h:${line}`});i++;continue;}
+    if(/^\s*([-*_])\s*(\1\s*){2,}$/.test(line)){blocks.push({type:'hr',key:`hr:${i}`});i++;continue;}
+    if(/^\s*>/.test(line)){
+      const body=[];while(i<lines.length && /^\s*>/.test(lines[i])){body.push(lines[i].replace(/^\s*>\s?/,''));i++;}
+      blocks.push({type:'blockquote',text:body.join('\n'),key:`bq:${body.join('\n')}`});continue;
+    }
+    if(line.includes('|') && i+1<lines.length && TABLE_SEP.test(lines[i+1])){
+      const header=splitRow(line),aligns=splitRow(lines[i+1]).map(c=>{const l=c.startsWith(':'),r=c.endsWith(':');return l&&r?'center':r?'right':l?'left':'';});
+      i+=2;const rows=[];
+      while(i<lines.length && lines[i].includes('|') && lines[i].trim() && !TABLE_SEP.test(lines[i])){rows.push(splitRow(lines[i]));i++;}
+      blocks.push({type:'table',header,aligns,rows,key:`table:${line}:${JSON.stringify(rows)}`});continue;
+    }
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(line)){
+      const start=i;i++;
+      while(i<lines.length && lines[i].trim() && (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]) || /^\s{2,}\S/.test(lines[i])))i++;
+      const raw=lines.slice(start,i);blocks.push({type:'list',lines:raw,key:`list:${raw.join('\n')}`});continue;
+    }
+    const para=[];while(i<lines.length && lines[i].trim() && !isBlockStart(lines[i],lines[i+1])){para.push(lines[i]);i++;}
+    blocks.push({type:'paragraph',text:para.join('\n'),key:`p:${para.join('\n')}`});
+  }
+  return blocks;
+}
+function mdInline(text,parent,ctx) {
+  let i=0,buf='';
+  const flush=()=>{if(buf){parent.append(document.createTextNode(buf));buf='';}};
+  while(i<text.length) {
+    const rest=text.slice(i);let m;
+    if(text[i]==='\\' && i+1<text.length && '\\`*_[]()#>~|'.includes(text[i+1])){buf+=text[i+1];i+=2;continue;}
+    if((m=rest.match(/^`([^`]+)`/))){flush();parent.append(element('code','',m[1]));i+=m[0].length;continue;}
+    if((m=rest.match(/^\[(web_[a-f0-9]{12})\]/)) && ctx.getSource(m[1])){flush();parent.append(ctx.citation(m[1]));i+=m[0].length;continue;}
+    if((m=rest.match(/^\[([^\]]+)\]\(([^)\s]+)\)/))){const u=safeURL(m[2]);if(u){flush();const a=element('a','answer-link',m[1]);a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';parent.append(a);i+=m[0].length;continue;}}
+    if((m=rest.match(/^\*\*([^]+?)\*\*/))||(m=rest.match(/^__([^]+?)__/))){flush();const s=element('strong');mdInline(m[1],s,ctx);parent.append(s);i+=m[0].length;continue;}
+    if((m=rest.match(/^\*([^*\n]+?)\*/))||(m=rest.match(/^_([^_\n]+?)_/))){flush();const em=element('em');mdInline(m[1],em,ctx);parent.append(em);i+=m[0].length;continue;}
+    if(text[i]==='\n'){flush();parent.append(document.createElement('br'));i++;continue;}
+    buf+=text[i];i++;
+  }
+  flush();
+  return parent;
+}
+function renderList(lines,ctx) {
+  const rootOrdered=/^\s*\d+[.)]/.test(lines[0]);
+  const root=element(rootOrdered?'ol':'ul','answer-list');
+  const stack=[{indent:lines[0].match(/^(\s*)/)[1].length,list:root,li:null}];
+  for(const raw of lines) {
+    const m=raw.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+    if(!m){const top=stack[stack.length-1];if(top.li){top.li.append(document.createTextNode(' '));mdInline(raw.trim(),top.li,ctx);}continue;}
+    const indent=m[1].length,ordered=/\d/.test(m[2]),content=m[3];
+    while(stack.length>1 && indent<stack[stack.length-1].indent)stack.pop();
+    let top=stack[stack.length-1];
+    if(indent>top.indent && top.li){const list=element(ordered?'ol':'ul','answer-list');top.li.append(list);top={indent,list,li:null};stack.push(top);}
+    const li=element('li');mdInline(content,li,ctx);top.list.append(li);top.li=li;
+  }
+  return root;
+}
+function renderBlock(block,ctx) {
+  switch(block.type) {
+    case 'heading':return mdInline(block.text,element('h'+Math.min(block.level+1,6),'answer-h'),ctx);
+    case 'hr':return element('hr');
+    case 'code':{const pre=element('pre');if(block.lang)pre.dataset.lang=block.lang;pre.append(element('code','',block.text));return pre;}
+    case 'blockquote':return mdInline(block.text,element('blockquote'),ctx);
+    case 'list':return renderList(block.lines,ctx);
+    case 'table':{
+      const wrap=element('div','answer-table-wrap'),table=element('table'),thead=element('thead'),htr=element('tr');
+      block.header.forEach((cell,c)=>{const th=element('th');if(block.aligns[c])th.style.textAlign=block.aligns[c];mdInline(cell,th,ctx);htr.append(th);});
+      thead.append(htr);const tbody=element('tbody');
+      for(const row of block.rows){const tr=element('tr');for(let c=0;c<block.header.length;c++){const td=element('td');if(block.aligns[c])td.style.textAlign=block.aligns[c];mdInline(row[c]??'',td,ctx);tr.append(td);}tbody.append(tr);}
+      table.append(thead,tbody);wrap.append(table);return wrap;
+    }
+    default:return mdInline(block.text,element('p'),ctx);
+  }
+}
+
+/** Streaming Markdown answer: re-rendered from the full text on each update but
+ * reconciled block-by-block so settled content never reflows. Inline [web_…]
+ * tokens become interactive citation buttons backed by the shared preview. */
 export class StreamingAnswer {
   constructor(getSource) {
     this.getSource=getSource;this.el=element('div','streaming-answer msg assistant');this.body=element('div','answer-body');
     this.preview=element('div','citation-preview');this.preview.hidden=true;
     this.state=element('div','answer-state');this.el.append(this.body,this.preview,this.state);
-    this.rendered='';this.buffer='';this.container=this.body;this.citations=new Map();
+    this.references={};this.fullText='';this.citations=new Map();this.blocks=[];this.pending=null;
   }
-  trimTrailing() {
-    // Whitespace committed before the final fragment arrived (e.g. "\n\n" then a tool call) is removed.
-    for(let node=this.body.lastChild;node;node=this.body.lastChild){
-      if(node.nodeType===Node.TEXT_NODE || node.tagName==='SPAN'){
-        const trimmed=node.textContent.replace(/\s+$/,'');
-        if(trimmed){node.textContent=trimmed;break;}
-        node.remove();
-      } else break;
-    }
-  }
-  appendToken(text,animate) {
-    if(!text)return;const span=element('span',animate?'answer-chunk':'',text);this.container.append(span);
+  citation(id) {
+    const source=this.getSource(id);if(!this.citations.has(id))this.citations.set(id,this.citations.size+1);
+    const n=this.citations.get(id),button=element('button','citation',String(n));button.type='button';button.title=source.title;
+    button.setAttribute('aria-label',`Source ${n}: ${source.title}`);
+    this.preview.id||=`citation-${++unique}`;button.setAttribute('aria-controls',this.preview.id);
+    button.setAttribute('aria-expanded',String(!this.preview.hidden && this.preview.dataset.source===id));
+    button.onclick=()=>{
+      const open=this.preview.hidden || this.preview.dataset.source!==id;
+      for(const b of this.body.querySelectorAll('.citation'))b.setAttribute('aria-expanded','false');
+      this.preview.hidden=!open;button.setAttribute('aria-expanded',String(open));this.preview.dataset.source=id;
+      if(open){
+        const detail=new SourceDetails();detail.update(this.getSource(id));
+        if(this.references[id]?.evidence==='discovered')detail.el.append(element('p','source-caution','This citation used a search result, not a page opened for this answer.'));
+        const close=element('button','source-close','Close source preview');close.onclick=()=>{this.preview.hidden=true;button.setAttribute('aria-expanded','false');button.focus();};
+        this.preview.replaceChildren(detail.el,close);
+      }
+    };
+    return button;
   }
   update(answer,replaying=false) {
     this.references=answer.references || {};
-    if((answer.text || '').startsWith(this.rendered)) {
-      this.buffer+=(answer.text || '').slice(this.rendered.length);this.rendered=answer.text || '';
-      // Leading blank lines from the provider never render; trailing ones are dropped once the answer is final.
-      if(!this.body.textContent && !this.body.childElementCount)this.buffer=this.buffer.replace(/^\s+/,'');
-      const final=answer.status!=='running';
-      if(final)this.buffer=this.buffer.replace(/\s+$/,'');
-      this.flush(final,!replaying && answer.status==='running');
-      if(final)this.trimTrailing();
-    }
+    const text=answer.text || '';
+    if(text.startsWith(this.fullText) || !this.fullText)this.fullText=text;
+    const final=answer.status!=='running';
+    if(replaying || final){cancelAnimationFrame(this.pending);this.pending=null;this.render();}
+    else if(!this.pending)this.pending=requestAnimationFrame(()=>{this.pending=null;this.render();});
     this.el.dataset.status=answer.status;
     this.state.textContent=answer.status==='running'?'':answer.status==='failed'?'Answer interrupted · '+(answer.error || 'The provider did not finish.'):['cancelled','interrupted'].includes(answer.status)?'Stopped · partial answer':'';
     this.state.hidden=!this.state.textContent;
   }
-  flush(final,animate) {
-    // Trailing whitespace is held back until more text arrives; it is never drawn and then removed.
-    let held='';
-    if(!final){const match=this.buffer.match(/\s+$/);if(match){held=match[0];this.buffer=this.buffer.slice(0,-held.length);}}
-    let text='';const commit=()=>{this.appendToken(text,animate);text='';};
-    while(this.buffer.length) {
-      if(this.buffer.startsWith('[')) {
-        const match=this.buffer.match(/^\[(web_[a-f0-9]{12})\]/);
-        if(match && this.getSource(match[1])) {
-          commit();const id=match[1],source=this.getSource(id);if(!this.citations.has(id))this.citations.set(id,this.citations.size+1);
-          const button=element('button','citation',String(this.citations.get(id)));button.type='button';button.title=source.title;
-          button.setAttribute('aria-label',`Source ${this.citations.get(id)}: ${source.title}`);button.setAttribute('aria-expanded','false');
-          this.preview.id ||= `citation-${++unique}`;button.setAttribute('aria-controls',this.preview.id);
-          button.onclick=()=>{
-            const open=this.preview.hidden || this.preview.dataset.source!==id;
-            for(const b of this.body.querySelectorAll('.citation'))b.setAttribute('aria-expanded','false');
-            this.preview.hidden=!open;button.setAttribute('aria-expanded',String(open));this.preview.dataset.source=id;
-            if(open){
-              const detail=new SourceDetails();detail.update(this.getSource(id));
-              if(this.references[id]?.evidence==='discovered')detail.el.append(element('p','source-caution','This citation used a search result, not a page opened for this answer.'));
-              const close=element('button','source-close','Close source preview');close.onclick=()=>{this.preview.hidden=true;button.setAttribute('aria-expanded','false');button.focus();};this.preview.replaceChildren(detail.el,close);
-            }
-          };
-          this.container.append(button);this.buffer=this.buffer.slice(match[0].length);continue;
-        }
-        if(!final && this.buffer.length<19 && /^\[(?:w(?:e(?:b(?:_[a-f0-9]*)?)?)?)?$/.test(this.buffer))break;
-      }
-      if(this.buffer.startsWith('**') || this.buffer.startsWith('`')) {
-        commit();const bold=this.buffer.startsWith('**'),tag=bold?'STRONG':'CODE';
-        if(this.container.tagName===tag)this.container=this.body;else {this.container=element(tag.toLowerCase());this.body.append(this.container);}
-        this.buffer=this.buffer.slice(bold?2:1);continue;
-      }
-      if(!final && this.buffer==='*')break;
-      text+=this.buffer[0];this.buffer=this.buffer.slice(1);
+  render() {
+    const blocks=parseBlocks(this.fullText);
+    // Reconcile by key: a block whose source text is unchanged keeps its DOM (and citation state).
+    for(let n=0;n<blocks.length;n++){
+      const prev=this.blocks[n];
+      if(prev && prev.key===blocks[n].key)continue;
+      const el=renderBlock(blocks[n],this);
+      if(prev)this.body.replaceChild(el,prev.el);else this.body.append(el);
+      this.blocks[n]={key:blocks[n].key,el};
     }
-    commit();
-    this.buffer+=held;
+    while(this.blocks.length>blocks.length){const removed=this.blocks.pop();removed.el.remove();}
   }
 }
 /** Question answers belong to the question card; the composer can answer it too. */
