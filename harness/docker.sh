@@ -17,6 +17,10 @@ files = {
     root / 'searxng/settings.yml': (
         'use_default_settings: true\nserver:\n  secret_key: ' + secrets.token_hex(32) +
         '\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n'
+        # Suspended engines return within a run (defaults: an hour after a CAPTCHA, longer for Cloudflare).
+        + '  suspended_times:\n' + ''.join(f'    {key}: {seconds}\n' for key, seconds in (
+            ('SearxEngineAccessDenied', 60), ('SearxEngineCaptcha', 300), ('SearxEngineTooManyRequests', 60),
+            ('cf_SearxEngineCaptcha', 600), ('cf_SearxEngineAccessDenied', 300), ('recaptcha_SearxEngineCaptcha', 600)))
         # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
         + 'engines:\n' + ''.join(f'  - name: {name}\n    disabled: false\n' for name in ('bing', 'qwant', 'mojeek', 'yahoo', 'yep')), 0o644),
 }

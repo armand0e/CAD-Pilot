@@ -60,7 +60,10 @@ SearXNG uses `/search?format=json` for web and image search. Edit the generated
 `harness/.docker/searxng/settings.yml` to choose engines; new installs enable bing,
 qwant, mojeek, yahoo and yep beside the defaults (brave, duckduckgo and google cse were
 all suspended by rate limits within one afternoon of live runs; add the `engines:` block
-to an existing file and restart the `searxng` service). Sources still pass the
+to an existing file and restart the `searxng` service). Engine suspensions are shortened
+(`search.suspended_times`: 60 s for rate limits and access denied, 5 min for a CAPTCHA, 10 min
+for Cloudflare) so an engine that throttled a burst answers again within the same run instead
+of an hour or a day later; no API keys are involved. Sources still pass the
 harness's public-URL checks; opened HTML uses sandboxed Chromium, and PDF parsing
 runs in a networkless worker. SearXNG replaces browser-based *search*; the small
 public-only proxy is retained for safe page reading. Engine throttling can still occur.

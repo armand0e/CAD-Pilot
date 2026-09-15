@@ -44,6 +44,12 @@ if [ ! -f "$workspace_dir/searxng/settings.yml" ]; then
   search_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   printf 'use_default_settings: true\nserver:\n  secret_key: %s\n  limiter: false\n  image_proxy: false\nsearch:\n  formats: [html, json]\n' \
     "$search_secret" > "$workspace_dir/searxng/settings.yml"
+  # Suspended engines return within a run (defaults: an hour after a CAPTCHA, longer for Cloudflare).
+  printf '  suspended_times:\n' >> "$workspace_dir/searxng/settings.yml"
+  for pair in SearxEngineAccessDenied:60 SearxEngineCaptcha:300 SearxEngineTooManyRequests:60 \
+              cf_SearxEngineCaptcha:600 cf_SearxEngineAccessDenied:300 recaptcha_SearxEngineCaptcha:600; do
+    printf '    %s: %s\n' "${pair%%:*}" "${pair##*:}" >> "$workspace_dir/searxng/settings.yml"
+  done
   # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
   printf 'engines:\n' >> "$workspace_dir/searxng/settings.yml"
   for engine in bing qwant mojeek yahoo yep; do
