@@ -278,7 +278,8 @@ export function reduceChat(state, event) {
     case 'note': case 'recovery': case 'native_review': case 'task_review': {
       const text=event.message || event.summary || event.observation; if(!text) break;
       const op=operation(turn,`status:${id}`,'thinking',event);
-      Object.assign(op,{label:event.t.includes('review') ? 'Reviewing the result' : 'Status update',text,status:'completed',finishedAt:event.ts}); break;
+      const label=event.compaction ? 'Context compacted' : (event.t.includes('review') ? 'Reviewing the result' : 'Status update');
+      Object.assign(op,{label,text,status:'completed',finishedAt:event.ts}); break;
     }
     case 'question': {
       if(segment(turn,`question:${event.question_id}`))break;

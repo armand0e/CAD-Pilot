@@ -888,6 +888,9 @@ function renderImageContext(usage) {
 }
 function renderContextUsage(usage) {
   const ring = $('context-ring'), arc = $('context-arc'), tip = $('context-tip'); if (!ring) return;
+  // A usage report with no measured token count (e.g. the fresh window right after a
+  // compaction) must not zero the ring; keep the last real reading until the next request.
+  if (usage && usage.prompt_tokens == null && usage.completion_tokens == null) return;
   const used = (usage?.prompt_tokens || 0) + (usage?.completion_tokens || 0);
   const max = usage?.max_context || state.health?.planner?.max_model_len || 0;
   const fraction = max ? Math.min(1, used / max) : 0;

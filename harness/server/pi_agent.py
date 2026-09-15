@@ -300,9 +300,14 @@ class PiBridge:
                     self.runner.emit({'t': 'note', 'message': 'Retrying with the model server calculating the available response space.'})
                 elif kind == 'usage' and message.get('usage'):
                     usage = message['usage']
-                    self.runner.context_usage = {'prompt_tokens': usage.get('tokens'), 'completion_tokens': 0,
-                                                  'max_context': usage['contextWindow'], 'runtime': 'pi'}
-                    self.runner.emit({'t': 'context_usage', **self.runner.context_usage, 'timeline': False})
+                    tokens = usage.get('tokens')
+                    # Right after compaction the runtime reports the fresh window before it has
+                    # re-measured the summarized context, so tokens is None. Skip that phantom
+                    # report; keeping the last real reading is far better than flashing to 0%.
+                    if isinstance(tokens, int) and tokens > 0:
+                        self.runner.context_usage = {'prompt_tokens': tokens, 'completion_tokens': 0,
+                                                      'max_context': usage['contextWindow'], 'runtime': 'pi'}
+                        self.runner.emit({'t': 'context_usage', **self.runner.context_usage, 'timeline': False})
                 elif kind == 'image_context':
                     self.runner.image_context = {k: v for k, v in message.items() if k != 'type'}
                     self.runner.emit({'t': 'image_context', **self.runner.image_context, 'timeline': False})
@@ -386,7 +391,11 @@ class PiBridge:
         elif kind == 'compaction_start':
             runner.emit({'t': 'note', 'message': 'Pi is compacting the conversation.'})
         elif kind == 'compaction_end':
-            runner.emit({'t': 'note', 'message': event.get('errorMessage') or ('Compaction cancelled.' if event.get('aborted') else 'Pi saved the conversation summary; continuing.')})
+            if event.get('aborted') or event.get('errorMessage'):
+                runner.emit({'t': 'note', 'message': event.get('errorMessage') or 'Compaction cancelled.'})
+            else:
+                runner.emit({'t': 'note', 'compaction': True,
+                             'message': 'Context compacted — earlier conversation summarized to free up space; the model keeps its plan, spec and saved geometry.'})
         elif kind == 'auto_retry_start':
             runner.emit({'t': 'note', 'message': f"Pi is retrying the model request ({event['attempt']}/{event['maxAttempts']})."})
 
