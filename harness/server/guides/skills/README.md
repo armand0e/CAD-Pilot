@@ -39,6 +39,8 @@ holds a gear), read both.
   fan / PCB / VESA / device mounts.
 - skills/figures-and-characters.md - people, animals, mascots, toys, stylised shapes;
   proportion, pose and a readable silhouette.
+- skills/scenes-and-dioramas.md - several objects arranged on a base: ponds, terrains,
+  desks, boards; composition, placement, scale, and a scene as a multi-part assembly.
 - skills/mechanisms-and-gears.md - gears, racks, shafts, bearing seats, motion.
 - skills/revolves-lofts-and-sweeps.md - anything round or tapering: vases, bottles,
   cups, knobs, nozzles, ducts, handles, horns.
