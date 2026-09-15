@@ -250,6 +250,26 @@ class DimensionResearchTests(unittest.IsolatedAsyncioTestCase):
         steps = [e['step']['activity'] for e in self.runner.transcript.read() if e['t'] == 'research_agent' and e.get('step')]
         self.assertIn('Asked the researcher to report', steps)
 
+    async def test_reference_ids_accept_web_sources_and_urls_as_seed_reading(self):
+        # The modeler often passes web source IDs (web_...) or URLs it already found, not image IDs.
+        # Those must seed the child's reading, and an unresolvable ID must not fail the delegation.
+        self.runner.research = {'sources': [{'id': 'web_abc123', 'url': 'https://mfr.example/spec'}],
+                                'notes': {'facts': [], 'assumptions': [], 'unknowns': []}}
+        captured = {}
+        async def reply(endpoint, messages, tools, **kwargs):
+            captured.setdefault('brief', '\n'.join(tool_text(m) for m in messages if m['role'] == 'user'))
+            return {'content': '', 'tool_calls': [{'id': 'c1', 'name': 'submit_research', 'arguments': json.dumps(
+                {'part_identity': 'fixture', 'summary': 'Documentation exhausted.', 'dimensions': [],
+                 'assumptions': [], 'unknowns': ['outline']})}]}
+        with pi_model(self.runner, reply):
+            async with asyncio.timeout(40):
+                result = await investigate(self.runner, {'part_identity': 'fixture', 'dimensions': ['outline'],
+                    'reference_ids': ['web_abc123', 'https://direct.example/drawing.pdf', 'totally_bogus_id']})
+        self.assertIn('https://mfr.example/spec', captured['brief'])          # web_ id resolved to its URL
+        self.assertIn('https://direct.example/drawing.pdf', captured['brief'])  # raw URL passed through
+        self.assertIn('read these first', captured['brief'])
+        self.assertEqual(result['status'], 'incomplete')
+
     async def test_budget_reminders_deadline_and_text_helpers(self):
         child = Project.create(self.project.path / 'research-tasks', 'research')
         investigation = Investigation(self.runner, {'part_identity': 'fixture', 'dimensions': ['length']}, child)

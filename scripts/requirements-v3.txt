@@ -1,0 +1,3 @@
+# Dedicated rebuild dependencies; installed in harness/.venv, not needed by the legacy CLI.
+av==18.1.0
+Pillow>=10

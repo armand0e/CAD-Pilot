@@ -52,7 +52,7 @@ if [ ! -f "$workspace_dir/searxng/settings.yml" ]; then
   done
   # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
   printf 'engines:\n' >> "$workspace_dir/searxng/settings.yml"
-  for engine in bing qwant mojeek yahoo yep; do
+  for engine in bing startpage qwant mojeek yahoo yep; do
     printf '  - name: %s\n    disabled: false\n' "$engine" >> "$workspace_dir/searxng/settings.yml"
   done
 fi

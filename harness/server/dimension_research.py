@@ -93,10 +93,11 @@ def quoted(quote, text):
 class Investigation:
     """State, tools and validation of one child research session."""
 
-    def __init__(self, parent, args, project, references=()):
+    def __init__(self, parent, args, project, references=(), seed_urls=()):
         self.parent, self.args, self.project = parent, args, project
         self.tool = parent.research_tool
         self.references = list(references)
+        self.seed_urls = list(seed_urls)
         self.leads = {}         # search results: id -> {id,title,url,snippet}
         self.photos = {}        # picture id -> {'url','title'} from web_images (identification only)
         self.calls = self.searches = self.exhausted = self.submissions = 0
@@ -145,6 +146,8 @@ class Investigation:
             lines += ['Context from the modeler: ' + context]
         if self.references:
             lines += ['Reference images (IDs for view_image): ' + ', '.join(r['research_image_id'] for r in self.references)]
+        if self.seed_urls:
+            lines += ['Sources the modeler already found (read these first with web_read): ' + ', '.join(self.seed_urls)]
         lines += [f'Budget: up to {self.max_calls} tool calls and {self.seconds // 60} minutes. The list is in priority order: '
                   'document the first items before exploring the rest, and submit with submit_research as soon as the values are '
                   'documented or the documentation is exhausted. A partial report with unknowns beats no report.']
@@ -391,20 +394,38 @@ async def investigate(parent, args):
     refs = args.get('reference_ids', [])
     if not isinstance(refs, list) or len(refs) > 16 or any(not isinstance(i, str) for i in refs):
         raise ValueError('Provide up to 16 relevant reference image IDs')
+    # reference_ids may be image IDs, web source IDs (web_...) the modeler already opened, or URLs.
+    # Image IDs seed the child as pictures; the rest become URLs it reads first — never a hard error.
+    known_urls = {}
+    for entry in (getattr(parent, 'research', None) or {}).get('sources', []):
+        if isinstance(entry, dict) and entry.get('id') and entry.get('url'):
+            known_urls[entry['id']] = entry['url']
+    for sid, meta in getattr(getattr(parent, '_documents', None), 'sources', {}).items():
+        if isinstance(meta, dict) and meta.get('url'):
+            known_urls.setdefault(sid, meta['url'])
     project = Project.create(parent.session.project.path / 'research-tasks', 'research')
     from .agent import AgentRunner
     session = SimpleNamespace(project=project, engine='hybrid', manual_changes=False,
                               app={'name': 'Dimension research'}, screen=SimpleNamespace(release_inputs=None), state_dir=None)
     child = AgentRunner(session, copy.deepcopy(parent.config))
-    references = []
+    references, seed_urls = [], []
     for identity in refs:
-        image = store_image(project.path / 'attachments', image_path(parent.session.project.path, identity).read_bytes(), identity)
+        try:
+            data = image_path(parent.session.project.path, identity).read_bytes()
+        except (ValueError, OSError):
+            if identity in known_urls:
+                seed_urls.append(known_urls[identity])
+            elif identity.startswith(('http://', 'https://')):
+                seed_urls.append(identity)
+            continue  # unknown, non-image ref: skip rather than fail the whole delegation
+        image = store_image(project.path / 'attachments', data, identity)
         references.append({'original_id': identity, 'research_image_id': image['id']})
+    seed_urls = list(dict.fromkeys(seed_urls))[:8]
     child.research_profile = True
     child.web_enabled = parent.web_enabled
     child._pi_new_session = True
     child._accept_attachments([r['research_image_id'] for r in references])
-    investigation = Investigation(parent, args, project, references)
+    investigation = Investigation(parent, args, project, references, seed_urls=seed_urls)
     child.investigation = investigation
     brief = investigation.brief()
     child.task_text = brief

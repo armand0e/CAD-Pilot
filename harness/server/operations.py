@@ -92,6 +92,9 @@ SPECS = {
     'lid': {'id': TEXT, 'body': TEXT, 'thickness': EXPR, 'lip_height': EXPR,
             'clearance': EXPR, 'gap': EXPR, 'parameters': PARAMETERS},
 }
+# `ask` is the short name the model often emits for ask_question; accept the same
+# schema so an options-bearing question is never rejected over the name alone.
+SPECS['ask'] = SPECS['ask_question']
 LEGACY_TOOLS = {'hollow', 'side_window', 'lid', 'cut_pattern'}
 PLACEMENT_V1 = {'position': XYZ, 'rotation': ROTATION}
 PLACEMENT_V2 = {'at': XYZ, 'anchor': ANCHOR, 'axis': AXIS}
@@ -1167,9 +1170,10 @@ def normalize_tool_arguments(tool, arguments):
         inner = args['operation']
         if 'tool' in inner and 'arguments' in inner:
             args['operation'] = {'tool': inner['tool'], 'arguments': normalize_tool_arguments(inner['tool'], inner['arguments'])}
-    if tool == 'ask_question':
+    if tool in ('ask', 'ask_question'):
         args.setdefault('multi_select', False)
-        args['options'] = [({'label': o, 'description': ''} if isinstance(o, str) else {'label': o.get('label', ''), 'description': o.get('description', '') or ''}) for o in args.get('options', [])]
+        args['options'] = [({'label': o, 'description': ''} if isinstance(o, str) else {'label': o.get('label', ''), 'description': o.get('description', '') or ''})
+                           for o in args.get('options', []) if o if (not isinstance(o, dict) or o.get('label'))]
     if tool == 'research':
         args.setdefault('focus', '')
         args.setdefault('part', 0)

@@ -1,0 +1,19 @@
+# Long-context trajectory training: ~60-step windows with screenshots + text log, 65,536-token budget,
+# loss on every action in the window. Requires `cad1000 trajectory-view --budget-tokens 65536`.
+extends: lora_bf16.yaml
+data:
+  policy_dir: data/processed/trajectory-v1-64k
+  max_total_tokens: 57344                  # windows are built at 61440; the largest get trailing steps trimmed. 65536 OOMed with optimizer states on the 64 GiB card.
+  eval_max_examples: 64
+train:
+  output_dir: runs/history64k
+  grad_accum: 4
+  optim: adamw_8bit                             # ~4 windows ≈ 200 supervised actions per optimizer step
+  save_steps: 20
+  eval_steps: 20
+  logging_steps: 1
+  dataloader_workers: 1                     # 32 GiB host RAM: each 50-image window is ~0.6 GB (bf16) in the shm queue
+  dataloader_prefetch: 1
+  dataloader_pin_memory: false
+eval:
+  batch_size: 1

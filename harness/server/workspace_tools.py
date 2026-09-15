@@ -76,6 +76,14 @@ requirements when changing one feature. Never claim an assumption was user-appro
 or sourced without its evidence. Research missing product measurements, open the
 actual documentation, and examine supplied images; search snippets aren't verified
 dimensions and pictures without scale don't establish exact dimensions.
+First identify what the request refers to. If a product, part or acronym is
+unfamiliar and one or two searches don't resolve it, stop and ask the user to
+confirm the exact name or what it is (ask_question, offering your best guesses as
+options) rather than searching name variants repeatedly or assuming the wrong
+subject; an empty search means the name is likely wrong, not that you should rephrase.
+Once identified, if you still lack a critical interface dimension (mounting-hole
+spacing, connector position, mating size) that no source gives, ask for it or state
+the assumption in the spec; never silently invent a mounting interface.
 When product dimensions are missing, delegate their investigation with
 research_dimensions: exact part/revision, the dimensions needed (most important
 first: outline, mounting holes, connector positions per edge; 3-6 items), relevant

@@ -57,7 +57,23 @@ class SearxngTests(unittest.IsolatedAsyncioTestCase):
                 await tool.search('pi 4 mounting holes')
         self.assertEqual(len(calls), 2)
         self.assertIn('google cse: Too many requests', str(caught.exception))
+        # Engines were rate-limited (warnings present), so this is transient, not "nothing exists":
+        # the model should wait/reuse the query, not rephrase. A genuinely empty answer (no warnings) stays no_results.
+        self.assertEqual(caught.exception.code, 'search_unavailable')
+        self.assertIn('rate-limited', str(caught.exception))
+
+    async def test_empty_results_with_healthy_engines_tell_the_model_the_name_is_wrong(self):
+        # Engines answered fine, they just found nothing: rephrasing variants is pointless.
+        def handle(request):
+            return httpx.Response(200, json={'results': [], 'unresponsive_engines': []})
+        tool = ResearchTool({'enabled': True, 'searxng_url': 'http://searxng:8080'})
+        with self.transport(handle):
+            with self.assertRaises(ResearchError) as caught:
+                await tool.search('SAMA CMP170HX nonexistent product')
         self.assertEqual(caught.exception.code, 'no_results')
+        message = str(caught.exception)
+        self.assertIn('ask_question', message)
+        self.assertNotIn('rate-limited', message)
 
     async def test_image_search_uses_images_category(self):
         requests = []

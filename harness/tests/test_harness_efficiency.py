@@ -78,7 +78,7 @@ class HarnessEfficiencyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.work.inputs()),2)
         self.assertEqual(value['requirements'][0]['status'],'open')
         self.runner.emit({'t':'user','event_id':'unlinked','text':'Add another feature.'});self.bridge.record_inputs(self.work)
-        with self.assertRaisesRegex(ValueError,'Link newly addressed'):
+        with self.assertRaisesRegex(ValueError,'not yet cited by any row: input:unlinked'):
             self.update({'addressed_inputs':['input:unlinked']})
 
     async def test_measurement_visual_and_file_verification_have_distinct_scopes(self):

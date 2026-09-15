@@ -310,8 +310,11 @@ class SourceWorkspace:
         linked = {i for key in ROWS for row in value[key] for i in row.get('evidence', [])}
         linked |= {i for key in ROWS for row in current[key] for i in row.get('evidence', [])}
         linked |= {i for key in ROWS for row in value[key] for i in row.get('retirement', {}).get('evidence', [])}
-        if set(value['addressed_inputs']) - set(current['addressed_inputs']) - linked:
-            raise ValueError('Link newly addressed inputs to a requirement, decision, reference or retirement first')
+        unlinked = set(value['addressed_inputs']) - set(current['addressed_inputs']) - linked
+        if unlinked:
+            raise ValueError('These addressed_inputs are not yet cited by any row: ' + ', '.join(sorted(unlinked))
+                             + '. Add each ID to the "evidence" list of the requirement/decision/reference it drove '
+                             '(or a retirement), then resend. Remove an ID from addressed_inputs if it drove nothing.')
         if len(json.dumps(value).encode()) > MAX_TEXT:
             raise ValueError('Specification exceeds 1 MiB')
         return value

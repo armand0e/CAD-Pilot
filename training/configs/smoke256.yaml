@@ -1,0 +1,11 @@
+# 256-example smoke run; inspect predictions manually before the pilot.
+extends: lora_bf16.yaml
+data:
+  max_examples: 256
+train:
+  output_dir: runs/smoke256
+  epochs: 2
+  grad_accum: 8
+  logging_steps: 1
+  save_steps: 100000
+  eval_steps: 32

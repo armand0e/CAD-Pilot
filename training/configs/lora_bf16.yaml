@@ -1,0 +1,48 @@
+# Primary recipe from TRAINING_HANDOFF_QWEN35_9B.md: BF16 LoRA on the language decoder only.
+model:
+  name: Qwen/Qwen3.5-9B
+  revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
+  dtype: bfloat16
+  attn_implementation: sdpa
+  quantization: none
+data:
+  policy_dir: data/processed/policy-v1      # produced by `cad1000 merge-shards` + `cad1000 policy-view`
+  train_file: train.jsonl
+  eval_file: validation.jsonl
+  max_total_tokens: 8192                    # enforced in PolicyDataset, not by text truncation
+  max_examples: null
+  eval_max_examples: 512
+  app_temperature: 0.5                      # 1.0 = raw frequency, 0.0 = uniform over applications
+  image:
+    max_pixels: 1048576                     # 1280x720 = 921,600 px -> no downscale
+    min_pixels: 65536
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  bias: none
+  targets: language_decoder                 # self_attn q/k/v/o + linear_attn qkv/z/out + mlp gate/up/down
+  include_linear_attn_gates: false
+  include_merger: false                     # stage-2 option: LoRA on the multimodal projector
+train:
+  output_dir: runs/lora-bf16
+  epochs: 1
+  per_device_batch: 1
+  grad_accum: 32                            # effective batch 32
+  lr: 1.0e-4
+  scheduler: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  optim: adamw_torch_fused
+  seed: 42
+  logging_steps: 5
+  save_steps: 200
+  eval_steps: 200
+  save_total_limit: 3
+  gradient_checkpointing: true
+  dataloader_workers: 4
+eval:
+  max_new_tokens: 96
+  batch_size: 4
+  radii_px: [8, 16, 32, 64]

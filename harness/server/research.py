@@ -294,8 +294,15 @@ class ResearchTool:
                 break
         if not results:
             detail = '; '.join(w['message'] for w in warnings[:3] if isinstance(w, dict) and w.get('message'))
-            raise ResearchError('Search returned no readable results' + (f' (search engines unavailable: {detail})' if detail else '')
-                                + '; try once more with different keywords or read a known URL', code='no_results')
+            if detail:
+                # Engines were rate-limited/timed out, not "nothing exists". Rephrasing hammers the
+                # same upstreams and makes it worse; wait and reuse the query, or read a URL directly.
+                raise ResearchError(f'Search engines are temporarily rate-limited ({detail}); they return on their own. '
+                                    'Wait a moment and repeat the SAME query, read a known URL directly, or proceed without web data. '
+                                    'Do not rephrase the query repeatedly.', code='search_unavailable')
+            raise ResearchError(f'No results for "{query.strip()[:120]}". The name may be wrong or the item may not be documented online. '
+                                'Do not keep re-searching variants: ask the user to confirm the exact product/part name (ask_question, '
+                                'offering your best guesses as options), or state your assumption and build.', code='no_results')
         return bounded_result({'operation': 'search', 'query': query, 'provider': provider, 'sources': results, 'warnings': warnings,
                 'notice': 'Search snippets are leads, NOT verified specifications. Read the relevant primary-source page before relying on dimensions.'})
 

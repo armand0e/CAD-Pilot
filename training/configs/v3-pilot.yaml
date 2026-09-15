@@ -1,0 +1,9 @@
+extends: v3.yaml
+data:
+  policy_dir: data/processed/trajectory-v3-pilot
+  max_examples: 160
+  eval_max_examples: 36
+train:
+  output_dir: runs/cad-policy-v3-pilot
+  eval_steps: 20
+  save_steps: 20

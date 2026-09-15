@@ -1,0 +1,9 @@
+# 5K-10K balanced pilot; compare to the base model on the same held-out records.
+extends: lora_bf16.yaml
+data:
+  max_examples: 8000
+train:
+  output_dir: runs/pilot8k
+  epochs: 1
+  save_steps: 50
+  eval_steps: 50

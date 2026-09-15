@@ -22,7 +22,7 @@ files = {
             ('SearxEngineAccessDenied', 60), ('SearxEngineCaptcha', 300), ('SearxEngineTooManyRequests', 60),
             ('cf_SearxEngineCaptcha', 600), ('cf_SearxEngineAccessDenied', 300), ('recaptcha_SearxEngineCaptcha', 600)))
         # Beyond the default brave/duckduckgo/google cse, which public rate limits suspend together.
-        + 'engines:\n' + ''.join(f'  - name: {name}\n    disabled: false\n' for name in ('bing', 'qwant', 'mojeek', 'yahoo', 'yep')), 0o644),
+        + 'engines:\n' + ''.join(f'  - name: {name}\n    disabled: false\n' for name in ('bing', 'startpage', 'qwant', 'mojeek', 'yahoo', 'yep')), 0o644),
 }
 for path, (body, mode) in files.items():
     try:

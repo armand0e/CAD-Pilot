@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server.agent import AgentRunner
-from server.operations import candidate, compile_workspace, validate_operation, workspace
+from server.operations import candidate, compile_workspace, normalize_tool_arguments, validate_operation, workspace
 from server.projects import Project, atomic_json
 from test_projects import block, stage_fixture
 
@@ -48,6 +48,18 @@ def enclosure_ops():
 
 
 class OperationTests(unittest.TestCase):
+    def test_ask_shortname_accepts_options_like_ask_question(self):
+        # Models frequently emit `ask` instead of `ask_question`; options must not be rejected over the name.
+        for tool in ('ask', 'ask_question'):
+            args = normalize_tool_arguments(tool, {'question': 'Where does the fan mount?',
+                'options': [{'label': 'At the card end', 'description': 'blower'}, 'Over the die'], 'multi_select': False})
+            self.assertEqual(args['options'][0], {'label': 'At the card end', 'description': 'blower'})
+            self.assertEqual(args['options'][1], {'label': 'Over the die', 'description': ''})
+            self.assertIs(args['multi_select'], False)
+        # A bare question still validates (options/multi_select are backfilled).
+        self.assertEqual(normalize_tool_arguments('ask', {'question': 'Proceed?'}),
+                         {'question': 'Proceed?', 'multi_select': False, 'options': []})
+
     def test_failed_candidate_does_not_modify_saved_ledger(self):
         saved, _, _ = candidate(workspace(), plate())
         original = copy.deepcopy(saved)

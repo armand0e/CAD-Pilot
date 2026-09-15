@@ -1,0 +1,7 @@
+# Fallback if BF16 LoRA OOMs after reducing microbatch and enabling checkpointing.
+extends: lora_bf16.yaml
+model:
+  quantization: nf4                         # NF4 + double quant, bf16 compute; vision tower stays bf16
+train:
+  output_dir: runs/qlora-nf4
+  optim: adamw_torch

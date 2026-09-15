@@ -1,0 +1,16 @@
+# Pipeline / label-mask sanity check: 32 examples, many epochs, loss must approach zero.
+extends: lora_bf16.yaml
+data:
+  policy_dir: data/processed/policy-smoke
+  max_examples: 32
+  app_temperature: 1.0
+train:
+  output_dir: runs/overfit32
+  epochs: 25
+  grad_accum: 4                             # 8 optimizer steps per epoch
+  lr: 2.0e-4
+  warmup_ratio: 0.05
+  logging_steps: 1
+  save_steps: 100000
+  eval_during_training: false
+  dataloader_workers: 2

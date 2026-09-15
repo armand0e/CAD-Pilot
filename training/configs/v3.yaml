@@ -1,0 +1,13 @@
+# Release candidate must start from the pinned base, never from the v2 baseline adapter.
+extends: full64k.yaml
+data:
+  policy_dir: data/processed/trajectory-v3
+  sampling: coverage
+  selection: app_stratified
+  require_full_coverage: true
+  eval_max_examples: 180
+train:
+  output_dir: runs/cad-policy-v3
+  eval_steps: 250
+eval:
+  max_new_tokens: 512

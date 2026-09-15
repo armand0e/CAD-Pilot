@@ -1,0 +1,10 @@
+# Full-corpus long-context run (all 597 workflows).
+extends: history64k.yaml
+data:
+  policy_dir: data/processed/trajectory-v2-64k
+  eval_max_examples: 48
+train:
+  output_dir: runs/cad-policy-v1-64k
+  save_steps: 25
+  eval_steps: 50
+  logging_steps: 2
