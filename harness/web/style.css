@@ -367,7 +367,8 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .settings-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .settings-section { padding: 10px 18px; border-top: 1px solid var(--hairline); }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; }
-.settings-row select, .settings-model input { font-size: 13px; padding: 5px 8px; border: 1px solid var(--hairline2); border-radius: 6px; background: var(--surface-inset); color: var(--text); }
+.settings-row select, .settings-model input, .settings-model select { font-size: 13px; padding: 5px 8px; border: 1px solid var(--hairline2); border-radius: 6px; background: var(--surface-inset); color: var(--text); }
+.settings-model .span-2 select { flex: 0 0 auto; max-width: 45%; min-width: 0; }
 .settings-help { margin: 0 0 8px; font-size: 12px; color: var(--text3); }
 .settings-model { display: grid; grid-template-columns: 22px 1fr 1fr; gap: 6px 8px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--hairline); }
 .settings-model input[type="radio"] { margin: 0; accent-color: var(--accent); }

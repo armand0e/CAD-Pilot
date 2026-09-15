@@ -42,6 +42,7 @@ def pi_image(path, **metadata):
 def model_config(runner):
     planner, agent = runner.config['planner'], runner.config['agent']
     return {'baseUrl': planner['base_url'].rstrip('/'), 'id': planner['model'], 'apiKey': planner.get('api_key', ''),
+            'api': planner.get('api', 'openai-completions'),
             'contextWindow': planner.get('max_model_len') or agent.get('max_model_len') or 32768,
             'maxImagesPerRequest': planner.get('max_images_per_request') or 16,
             'thinking': agent.get('model_thinking', True) and agent.get('native_reasoning_effort') != 'off',

@@ -73,8 +73,13 @@ async function configure(modelConfig) {
   const maxTokens = c.maxTokens || contextWindow;
   // The app accepts OpenAI-compatible endpoints. Pi implements their transport
   // and model-specific thinking conventions; credentials stay in memory.
-  const compat = { supportsDeveloperRole: false, supportsStore: false, maxTokensField: 'max_tokens' };
-  if (c.qwenTemplate) Object.assign(compat, { thinkingFormat: 'chat-template', supportsReasoningEffort: false,
+  const api = c.api || 'openai-completions';
+  // The vLLM allocation-repair transport and the OpenAI-compatible quirks below only apply to
+  // openai-completions (vLLM/Ollama/proxies). The native cloud APIs (anthropic-messages,
+  // google-generative-ai, openai-responses) use pi's own transport and reasoning handling.
+  const local = api === 'openai-completions';
+  const compat = local ? { supportsDeveloperRole: false, supportsStore: false, maxTokensField: 'max_tokens' } : undefined;
+  if (local && c.qwenTemplate) Object.assign(compat, { thinkingFormat: 'chat-template', supportsReasoningEffort: false,
     chatTemplateKwargs: { enable_thinking: { $var: 'thinking.enabled' }, preserve_thinking: true,
       reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true } },
     ...(c.thinkingBudget ? { thinkingTokenBudgetField: 'thinking_token_budget' } : {}) });
@@ -88,10 +93,10 @@ async function configure(modelConfig) {
     },
     onAdjustment: () => send({ type: 'budget_adjustment' }),
   });
-  runtime.registerProvider('cadpilot', { baseUrl: c.baseUrl, api: 'openai-completions', streamSimple: budget.stream, models: [{
+  runtime.registerProvider('cadpilot', { baseUrl: c.baseUrl, api, ...(local ? { streamSimple: budget.stream } : {}), models: [{
     id: c.id, name: c.id, reasoning: c.qwenTemplate || c.thinking !== false, input: ['text', 'image'],
-    ...(c.qwenTemplate ? { thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'medium', high: 'xhigh', xhigh: 'xhigh' } } : {}),
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow, maxTokens, compat,
+    ...(local && c.qwenTemplate ? { thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'medium', high: 'xhigh', xhigh: 'xhigh' } } : {}),
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow, maxTokens, ...(compat ? { compat } : {}),
   }] });
   await runtime.setRuntimeApiKey('cadpilot', c.apiKey || 'local-no-key');
   settings.setHttpIdleTimeoutMs(c.timeoutMs || 0);

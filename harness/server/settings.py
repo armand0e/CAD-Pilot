@@ -15,6 +15,9 @@ from pathlib import Path
 STATE = Path(__file__).resolve().parents[1] / 'state'
 FILE = STATE / 'settings.json'
 EFFORTS = ('off', 'low', 'medium', 'high', 'xhigh')
+# Provider request formats the Pi runtime speaks. openai-completions covers vLLM/Ollama/
+# LM Studio and OpenAI-compatible proxies; the rest are the native cloud APIs.
+APIS = ('openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai')
 KEEP_KEY = '••••••••'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9 ._:/-]{0,59}\Z')
 
@@ -31,7 +34,8 @@ def default_settings(config):
             'active_model': planner.get('model', 'default'),
             'models': [{'name': planner.get('model', 'default'), 'base_url': planner.get('base_url', ''), 'model': planner.get('model', ''),
                         'api_key': '', 'context_window': planner.get('max_model_len'), 'max_images_per_request': planner.get('max_images_per_request', 16),
-                        'thinking_token_budget': config.get('agent', {}).get('native_thinking_token_budget')}]}
+                        'thinking_token_budget': config.get('agent', {}).get('native_thinking_token_budget'),
+                        'api': planner.get('api', 'openai-completions')}]}
 
 
 def load(config):
@@ -73,7 +77,10 @@ def validate(data, previous):
         images = item.get('max_images_per_request')
         if images not in (None, '') and (type(images) is not int or images < 1):
             raise ValueError(f'{name}: max_images_per_request must be a positive integer, or empty to use 16')
-        models.append({'name': name, 'base_url': base_url.rstrip('/'), 'model': model, 'api_key': key,
+        api = str(item.get('api') or 'openai-completions')
+        if api not in APIS:
+            raise ValueError(f"{name}: api must be one of {', '.join(APIS)}")
+        models.append({'name': name, 'base_url': base_url.rstrip('/'), 'model': model, 'api_key': key, 'api': api,
                        'thinking_token_budget': int(budget) if budget not in (None, '') else None, 'context_window': window or None,
                        'max_images_per_request': images if images not in (None, '') else 16})
     if not models:
@@ -110,6 +117,7 @@ def apply(config, settings):
         planner.pop('structured_output_whitespace_pattern', None)
         planner.pop('vendor_extensions', None)
     planner.update(base_url=active['base_url'], model=active['model'], api_key=active['api_key'], reasoning_effort=settings['reasoning_effort'])
+    planner['api'] = active.get('api', 'openai-completions')
     planner['max_images_per_request'] = active.get('max_images_per_request') or 16
     if changed_provider or planner.get('context_window_explicit'):
         planner.pop('max_model_len', None)

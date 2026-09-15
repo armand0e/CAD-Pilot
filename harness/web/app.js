@@ -345,6 +345,8 @@ function connectWS(path, handlers) {
   let closedByUs = false, attempts = 0, timer = null, current = null;
   const open = () => {
     if (closedByUs) return;
+    // Idempotent: never stack a second socket on a live one (a stale onclose timer can race reconnect()).
+    if (current && (current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)) return;
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`);
     current = ws;
     ws.binaryType = "arraybuffer";
@@ -361,7 +363,25 @@ function connectWS(path, handlers) {
     handlers.assign(ws);
   };
   open();
-  return { close() { closedByUs = true; clearTimeout(timer); current?.close(); } };
+  return {
+    close() { closedByUs = true; clearTimeout(timer); current?.close(); },
+    // Wake from sleep / network return: reconnect now rather than waiting out the backoff
+    // (the browser suspends timers while the tab is hidden, so the retry may be stuck).
+    reconnect() {
+      if (closedByUs) return;
+      const s = current?.readyState;
+      if (s === undefined || s === WebSocket.CLOSED || s === WebSocket.CLOSING) { attempts = 0; clearTimeout(timer); open(); }
+    },
+  };
+}
+
+// After the screen sleeps or the network drops, the sockets close but the backoff timer is
+// throttled while hidden; reconnect the moment the tab is visible/online again.
+{
+  const reconnectSockets = () => { if (!state.session) return; state.viewWS?.reconnect?.(); state.agentWS?.reconnect?.(); };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reconnectSockets(); });
+  window.addEventListener('online', reconnectSockets);
+  window.addEventListener('focus', reconnectSockets);
 }
 
 /* ---------------- viewport ---------------- */
@@ -729,9 +749,14 @@ function modelRow(model, active, index) {
   const name = document.createElement('input'); name.placeholder = 'Name (e.g. local qwen)'; name.value = model.name || ''; name.dataset.field = 'name';
   const modelId = document.createElement('input'); modelId.placeholder = 'Model id (e.g. qwen3.8-27b)'; modelId.value = model.model || ''; modelId.dataset.field = 'model';
   const url = document.createElement('input'); url.placeholder = 'Endpoint base URL (http://host:8000/v1)'; url.value = model.base_url || ''; url.dataset.field = 'base_url';
+  const provider = document.createElement('select'); provider.dataset.field = 'api'; provider.title = 'Provider request format';
+  for (const [val, label] of [['openai-completions', 'OpenAI-compatible / vLLM'], ['anthropic-messages', 'Anthropic'], ['openai-responses', 'OpenAI Responses'], ['google-generative-ai', 'Google Gemini']]) {
+    const opt = document.createElement('option'); opt.value = val; opt.textContent = label; provider.append(opt);
+  }
+  provider.value = model.api || 'openai-completions';
   const key = document.createElement('input'); key.type = 'password'; key.placeholder = model.has_key ? 'API key stored (leave to keep)' : 'API key (optional)'; key.value = model.has_key ? '••••••••' : ''; key.dataset.field = 'api_key';
   const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove'; remove.textContent = 'remove'; remove.onclick = () => row.remove();
-  const line2 = document.createElement('div'); line2.className = 'span-2'; line2.append(url);
+  const line2 = document.createElement('div'); line2.className = 'span-2'; line2.append(provider, url);
   const line3 = document.createElement('div'); line3.className = 'span-2'; line3.append(key, remove);
   const limits = document.createElement('div'); limits.className = 'span-2';
   for (const [field, label] of [['context_window', 'Context window (tokens, auto if empty)'], ['thinking_token_budget', 'Thinking budget (tokens, optional)'], ['max_images_per_request', 'Images per request (endpoint limit; default 16)']]) {
@@ -755,7 +780,7 @@ $('settings-close').onclick = () => $('settings-dialog').close();
 $('settings-add-model').onclick = () => $('settings-models').append(modelRow({ name: '', model: '', base_url: 'http://127.0.0.1:8000/v1' }, !$('settings-models').children.length, $('settings-models').children.length));
 $('settings-save').onclick = async () => {
   const rows = [...$('settings-models').querySelectorAll('.settings-model')];
-  const models = rows.map(row => { const m = {}; for (const input of row.querySelectorAll('input[data-field]')) m[input.dataset.field] = input.type === 'number' ? (input.value ? Number(input.value) : null) : input.value; return m; });
+  const models = rows.map(row => { const m = {}; for (const input of row.querySelectorAll('input[data-field], select[data-field]')) m[input.dataset.field] = input.type === 'number' ? (input.value ? Number(input.value) : null) : input.value; return m; });
   const activeRow = rows.find(row => row.querySelector('input[type=radio]').checked);
   const active_model = activeRow ? activeRow.querySelector('input[data-field=name]').value : (models[0]?.name || '');
   try {
