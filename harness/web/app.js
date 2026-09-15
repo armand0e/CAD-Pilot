@@ -759,7 +759,7 @@ function modelRow(model, active, index) {
   const line2 = document.createElement('div'); line2.className = 'span-2'; line2.append(provider, url);
   const line3 = document.createElement('div'); line3.className = 'span-2'; line3.append(key, remove);
   const limits = document.createElement('div'); limits.className = 'span-2';
-  for (const [field, label] of [['context_window', 'Context window (tokens, auto if empty)'], ['thinking_token_budget', 'Thinking budget (tokens, optional)'], ['max_images_per_request', 'Images per request (endpoint limit; default 16)']]) {
+  for (const [field, label] of [['context_window', 'Context window (tokens, auto if empty)'], ['thinking_token_budget', 'Thinking budget (tokens; empty = uncapped, try 12000-16000)'], ['max_images_per_request', 'Images per request (endpoint limit; default 16)']]) {
     const input = document.createElement('input'); input.type = 'number'; input.min = field === 'context_window' ? '4096' : '1';
     input.placeholder = label; input.title = label; input.setAttribute('aria-label', label); input.dataset.field = field; input.value = model[field] || ''; limits.append(input);
   }
