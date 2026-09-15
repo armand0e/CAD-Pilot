@@ -60,6 +60,30 @@ class OperationTests(unittest.TestCase):
         self.assertEqual(normalize_tool_arguments('ask', {'question': 'Proceed?'}),
                          {'question': 'Proceed?', 'multi_select': False, 'options': []})
 
+    def test_review_attaches_rendered_views_when_the_planner_takes_images(self):
+        # The reviewer must see FORM, not only bounds: a flat plate and a duct share a bounding box.
+        import os, tempfile
+        tmp = tempfile.mkdtemp()
+        for view in ('iso', 'front', 'top', 'right'):
+            Path(tmp, f'view-{view}.png').write_bytes(b'\x89PNG\r\n\x1a\n' + view.encode())
+        class FakeProject:
+            def file(self, head, name):
+                path = Path(tmp, name)
+                if not path.exists():
+                    raise OSError('missing')
+                return path
+        fake = SimpleNamespace(config={'planner': {'max_images_per_request': 16}},
+                               session=SimpleNamespace(project=FakeProject()))
+        parts = AgentRunner._revision_view_parts(fake, 'r0001', limit=4)
+        images = [p for p in parts if p['type'] == 'image_url']
+        self.assertEqual(len(images), 4)
+        self.assertTrue(images[0]['image_url']['url'].startswith('data:image/png;base64,'))
+        # Gated off when the planner accepts no images, or when there is no saved revision yet.
+        fake.config['planner']['max_images_per_request'] = 0
+        self.assertEqual(AgentRunner._revision_view_parts(fake, 'r0001'), [])
+        fake.config['planner']['max_images_per_request'] = 16
+        self.assertEqual(AgentRunner._revision_view_parts(fake, None), [])
+
     def test_failed_candidate_does_not_modify_saved_ledger(self):
         saved, _, _ = candidate(workspace(), plate())
         original = copy.deepcopy(saved)

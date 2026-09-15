@@ -109,6 +109,11 @@ is not proof of requested features or fit. Keep unresolved assumptions visible.
 Ask a focused question only when a new choice materially affects the result.
 A question that needs no geometry gets a direct answer with its sources; the spec
 is for things you build.
+Before finishing, look at the rendered views of what you built and check its FORM against the
+request, not only its dimensions: does the shape actually do the job (a duct has a through-cavity,
+a mount cradles or bolts to its part, an enclosure encloses)? A valid solid with the right
+bounding box can still be the wrong object. If the shape is wrong, fix model.py and rebuild; run
+review for an independent check on any non-trivial part.
 End with what changed, assumptions and what remains unverified. Respect steering.
 '''
 

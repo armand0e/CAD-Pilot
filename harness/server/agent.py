@@ -1528,7 +1528,7 @@ class AgentRunner:
                 self.set_phase('verifying')
                 if ctx['expected_head'] not in ctx['reviews']:
                     try:
-                        ctx['reviews'][ctx['expected_head']] = await self._inference(self._review_native_requirements(ctx['ledger'], ctx['geometry']))
+                        ctx['reviews'][ctx['expected_head']] = await self._inference(self._review_native_requirements(ctx['ledger'], ctx['geometry'], ctx['expected_head']))
                     except (ValueError, RuntimeError) as error:
                         ctx['reviews'][ctx['expected_head']] = {'status': 'unavailable', 'issues': [], 'summary': f'Review unavailable: {str(error)[:200]}'}
                 review = ctx['reviews'][ctx['expected_head']]
@@ -1692,12 +1692,30 @@ class AgentRunner:
         facts = self.research['notes'].get('facts', []) + [{'statement': f, 'quote': ''} for f in self.library_facts]
         return caveat(unsupported_measurements(text, facts, user_texts))
 
-    async def _review_native_requirements(self, ledger, geometry):
+    def _revision_view_parts(self, head, limit=4):
+        """Rendered views of a saved revision as image parts, so the reviewer sees form, not only bounds."""
+        if not head or int(self.config.get('planner', {}).get('max_images_per_request') or 0) <= 0:
+            return []
+        parts = []
+        for view in ('iso', 'front', 'top', 'right'):
+            try:
+                data = self.session.project.file(head, f'view-{view}.png').read_bytes()
+            except (OSError, ValueError):
+                continue
+            parts += [{'type': 'text', 'text': f'Rendered {view} view of the saved model:'},
+                      {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(data).decode()}}]
+            if len(parts) // 2 >= limit:
+                break
+        return parts
+
+    async def _review_native_requirements(self, ledger, geometry, head=None):
         _, inspected_state = compile_workspace(ledger)
+        summary = json.dumps({'task': self.task_text, 'dialogue': self._conversation_context(), 'design_brief': self.design_brief,
+                'workspace': ledger, 'inspected_state': inspected_state, 'geometry': geometry_summary(geometry, inspected_state), 'research': self._research_context(pages=False)})
+        views = self._revision_view_parts(head)
         raw = await self._chat(self.config['planner'], [
             {'role': 'system', 'content': REQUIREMENT_REVIEW_SYSTEM + DIALOGUE_RULES},
-            {'role': 'user', 'content': json.dumps({'task': self.task_text, 'dialogue': self._conversation_context(), 'design_brief': self.design_brief,
-                'workspace': ledger, 'inspected_state': inspected_state, 'geometry': geometry_summary(geometry, inspected_state), 'research': self._research_context(pages=False)})}], max_tokens=6144,
+            {'role': 'user', 'content': ([{'type': 'text', 'text': summary}] + views) if views else summary}], max_tokens=6144,
             thinking={'reasoning_effort': self.config['agent'].get('native_reasoning_effort'),
                       'thinking_token_budget': self.config['agent'].get('native_thinking_token_budget')}, display_activity='Reviewing CAD requirements',
             response_format={'type': 'json_schema', 'json_schema': {'name': 'cad_requirement_review', 'strict': True,

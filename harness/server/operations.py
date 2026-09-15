@@ -972,8 +972,12 @@ HOW TO WORK
   solid_wall_bands_mm); use hole/hole_pattern for round holes into a face.
 - Errors name the offending expression or operation; fix that one call, never resend it
   unchanged. Cite operations by the index shown in workspace.operations.
+- Before finishing, check the built FORM against the request, not only its dimensions: a valid
+  solid with the right bounding box can still be the wrong object (a flat plate where a duct was
+  asked for). If the shape cannot do the job, fix it and rebuild.
 - End your turn with a message: what you built, which values were assumed, what remains
-  unverified. Call review when you want an independent check; it is advisory.
+  unverified. Call review when you want an independent check; it now sees the rendered views and
+  is advisory.
 
 GEOMETRY
 Millimetres, right-handed x,y,z. A body's faces are its bounding-box faces xmin xmax ymin ymax
@@ -1001,6 +1005,13 @@ feature count, position, separate part and accepted assumption matches the actua
 measurements. Each issue must name the operation index (1-based), the actual value and the
 required value, or a missing feature. Do not list matching features, speculate about alternate
 meanings, or narrate. A correct model passes with issues=[].
+Rendered views of the saved model may be attached. When they are, judge the overall FORM against
+the request, not only the numeric bounds: a valid solid with the right bounding box can still be
+the wrong object. Confirm the features the request implies are actually present in the shape
+(a duct or shroud has a through-cavity and open ends; a mount cradles or bolts to its part; a
+bracket has its arms; a lid has its recess; the part is oriented as described). If the views show
+a shape that cannot perform the request (for example a flat plate where a duct was asked for),
+that is status=revise with an issue naming the missing form. Numbers and views must agree.
 CONVENTIONS: create_body/fuse/cut place a primitive by at+anchor (corner = bounding-box minimum
 corner, center = bounding-box center, base = center of the minimum face along axis). hole u,v are
 world coordinates on the named face (ymin/ymax: u=x v=z; xmin/xmax: u=y v=z; zmin/zmax: u=x v=y)
