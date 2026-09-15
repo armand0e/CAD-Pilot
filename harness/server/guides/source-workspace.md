@@ -52,6 +52,24 @@ label = glyphs.Shape.extrude(App.Vector(0, 0, 1))   # 1 mm tall; fuse onto a bod
 
 TrueType fonts are under /usr/share/fonts/truetype (dejavu, liberation).
 
+A real helical thread is a V-profile swept along a helix and cut from (external) or
+fused to (internal) a cylinder. Do not hand-place the profile by trial and error:
+
+```python
+import FreeCAD as App, Part
+def external_thread(radius, pitch, length, depth=0.7):
+    core = Part.makeCylinder(radius, length)
+    helix = Part.makeHelix(pitch, length, radius)
+    v = Part.makePolygon([App.Vector(radius + 0.2, 0, -pitch/2), App.Vector(radius - depth, 0, 0),
+                          App.Vector(radius + 0.2, 0, pitch/2), App.Vector(radius + 0.2, 0, -pitch/2)])
+    cut = Part.BRepOffsetAPI.MakePipeShell(Part.Wire(helix)); cut.setFrenetMode(True)
+    cut.add(v, True, True); cut.build(); cut.makeSolid()
+    return core.cut(cut.shape())
+```
+
+Fine helices mesh a couple of percent off their analytic volume; that is expected and
+the build audit allows for it, so a valid thread is not rejected.
+
 OpenSCAD source is compiled with openscad to STL. The native FCStd/STEP conversion
 contains faceted geometry, not analytic curves. The original .scad and mesh are
 retained. For analytic STEP and detailed face inspection prefer FreeCAD Python.
