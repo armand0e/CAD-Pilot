@@ -71,7 +71,8 @@ def check_verification(row, evidence, head, file):
         raise ValueError('Measurement verification needs numeric CAD inspection evidence, not a render')
     field = check.get('field', '')
     if not isinstance(field, str) or not field.startswith('/'):
-        raise ValueError('Measurement field must be a JSON pointer into the inspection result')
+        raise ValueError('Measurement field must be a JSON pointer into the inspection result, '
+                         'e.g. /objects/0/bounds_mm/2 for a z length, or /minimum_distance_mm for a gap')
     keys = [k.replace('~1', '/').replace('~0', '~') for k in field[1:].split('/')]
     # Restrict selectors to geometry, excluding timestamps, offsets, revision
     # numbers and other bookkeeping fields that cannot measure the part.
