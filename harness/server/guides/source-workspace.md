@@ -13,6 +13,22 @@ unsaved file changes unless discard_changes=true. Never discard user edits witho
 the user's instruction. Existing typed operations remain available until switching
 to source with a successful cad_build. They cannot overwrite a source model.
 
+## Skills: read the playbook for your task
+
+/work/skills holds short expert playbooks for kinds of modelling tasks: how to
+approach them, how to use the tools powerfully, the mistakes that ruin a part, and how
+to verify the result. They lift the quality of the first build markedly, especially on
+unfamiliar work. They are read-only guidance, not modelling source.
+
+Before you model anything non-trivial: read skills/README.md (the index), then read
+the one or two skills that match the task. At minimum, skills/modeling-strategy.md and
+skills/verify-your-work.md pay off on almost every task; skills/orientation-and-scale.md
+and skills/connections-and-assembly.md prevent the most common wrong-but-valid results
+(upside down, wrong size, floating features, reference geometry exported as product).
+Match the task family (enclosure, bracket/mount, figure/character, gears, revolve/loft,
+flat panel, text, fastener, from-reference) and read that file too. You do not need
+permission to read a skill.
+
 ## FreeCAD Python
 
 Use the full FreeCAD/Part APIs, imports, functions, sketches, boolean operations,

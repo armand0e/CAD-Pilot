@@ -34,8 +34,12 @@ IMAGES_DIR = 'images'  # sandbox mount point for the project's images (read-only
 # Required software resources must not live in the persisted knowledge volume:
 # an existing Docker volume hides files added to that directory in a new image.
 SERVER = Path(__file__).resolve().parent
+SKILLS_DIR = 'skills'  # task playbooks seeded read-only beside CAD_GUIDE.md; indexed from the guide
+SKILLS_SOURCE = SERVER / 'guides/skills'
 SUPPLIED_FILES = {'CAD_GUIDE.md': SERVER / 'guides/source-workspace.md', 'cad_paths.py': SERVER / 'cad_paths.py',
                   'svg_path.py': SERVER / 'svg_path.py', 'cad_paths.scad': SERVER / 'cad_paths.scad'}
+# Any skills/*.md added to the guides folder ships in the image and is seeded automatically.
+SUPPLIED_FILES.update({f'{SKILLS_DIR}/{p.name}': p for p in sorted(SKILLS_SOURCE.glob('*.md'))})
 
 
 def digest(data):
@@ -73,9 +77,9 @@ class SourceWorkspace:
         self.file('.')
         for root, dirs, names in os.walk(self.path, followlinks=False):
             if Path(root) == self.path:
-                for skip in (CONTEXT_DIR, IMAGES_DIR):
+                for skip in (CONTEXT_DIR, IMAGES_DIR, SKILLS_DIR):
                     if skip in dirs:
-                        dirs.remove(skip)  # Regenerable tool records and read-only image mounts are not modeling source.
+                        dirs.remove(skip)  # Tool records, image mounts and read-only skill playbooks are not modeling source.
             for name in dirs + names:
                 path = self.file((Path(root) / name).relative_to(self.path).as_posix())
                 if path.is_dir():
@@ -103,7 +107,8 @@ class SourceWorkspace:
                 path = self.file(name)
                 if path.is_file() and path.read_bytes() == data:
                     continue
-                fd, pending = tempfile.mkstemp(dir=self.path, prefix='.supplied-')
+                path.parent.mkdir(parents=True, exist_ok=True)  # nested skills/ paths
+                fd, pending = tempfile.mkstemp(dir=path.parent, prefix='.supplied-')
                 try:
                     with os.fdopen(fd, 'wb') as output:
                         output.write(data)
@@ -164,7 +169,7 @@ class SourceWorkspace:
             # Restoring geometry is an explicit existing UI operation; source cannot silently rebase onto unrelated geometry.
             raise ValueError('Checkout must match the current saved revision. Restore that revision first to use an older base.')
         for item in list(self.path.iterdir()):
-            if item.name in RESERVED:
+            if item.name in RESERVED or item.name == SKILLS_DIR:
                 continue
             if item.is_dir() and not item.is_symlink():
                 shutil.rmtree(item)
@@ -411,7 +416,7 @@ class SourceWorkspace:
         return {'root': '/work', 'base_head': state.get('base_head'), 'source_mode': state.get('source_mode', False),
                 'files': files, 'dirty': {f['path']: f['sha256'] for f in files if f['path'] not in RESERVED} != state.get('baseline', {}),
                 'current_head': self.project.read()['head'], 'specification_path': '/work/design-spec.json', 'specification_version': self.spec()['version'],
-                'help': 'Read CAD_GUIDE.md; edit model.py/model.scad, then cad_build. Use cad_checkout after restoring or changing the project base.'}
+                'help': 'Read CAD_GUIDE.md and, for the task at hand, the matching playbook in skills/ (start with skills/README.md). Edit model.py/model.scad, then cad_build. Use cad_checkout after restoring or changing the project base.'}
 
     async def fs(self, args):
         self.ensure()
