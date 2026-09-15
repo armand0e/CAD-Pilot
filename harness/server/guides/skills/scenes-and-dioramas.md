@@ -81,4 +81,6 @@ each simple - in a scene, a readable silhouette per object matters more than det
 - Objects are to scale with each other and the base; the arrangement has a focal point
   and open space, not a pile.
 - solid_count > 1 is expected; the scene is an assembly.
+- Set views to a top-down (layout) and a low oblique (relief and standing objects) so
+  the saved images actually show the scene reads (see verify-your-work.md).
 - Tall/thin elements are stout enough to print, or are separate press-fit pieces.
