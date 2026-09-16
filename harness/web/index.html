@@ -138,10 +138,16 @@
         </div>
         <div id="booting" class="booting hidden"><div class="spinner"></div><span id="booting-text">Starting…</span></div>
         <div id="model-preview" class="model-preview hidden">
+          <canvas id="preview-3d" class="preview-3d" hidden></canvas>
           <div class="preview-stage">
             <img id="preview-img" alt="Live render of the model" hidden>
             <video id="preview-video" class="hidden" loop muted autoplay playsinline></video>
-            <div id="preview-empty" class="preview-empty"><div class="preview-spark">✦</div><strong>Watching for the first build</strong><span>The model's renders — form, materials, lighting, textures — appear here as it works, and the animation plays when it makes one.</span></div>
+            <div id="preview-empty" class="preview-empty"><div class="preview-spark">✦</div><strong>Watching for the first build</strong><span>The model's 3D form — geometry, materials, lighting, textures — appears here as it works. Drag to orbit; the animation plays when it makes one.</span></div>
+          </div>
+          <div id="preview-modes" class="preview-modes hidden" role="group" aria-label="Preview mode">
+            <button data-pmode="3d" class="on" type="button" title="Orbit the 3D model">3D</button>
+            <button data-pmode="render" type="button" title="The rendered beauty still">Render</button>
+            <button data-pmode="anim" type="button" hidden title="Play the recorded animation">Animation</button>
           </div>
           <div id="preview-badge" class="preview-badge" hidden></div>
         </div>
@@ -187,6 +193,10 @@
   <dialog id="help-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button><span class="eyebrow">WORKSPACE SHORTCUTS</span><h2>Stay in the flow.</h2><dl><dt>Send a task</dt><dd>Enter</dd><dt>New line</dt><dd>Shift + Enter</dd><dt>Stop the agent</dt><dd>Esc</dd><dt>Focus task input</dt><dd>Ctrl / ⌘ + K</dd></dl><p>Click the CAD viewport to use its keyboard shortcuts. Pause finishes the current step; Take control stops the run.</p></form></dialog>
   <dialog id="close-dialog"><form method="dialog"><span class="eyebrow">END SESSION</span><h2>Finished with this workspace?</h2><p>Save your work in the CAD application first. Ending this session closes the application and its display.</p><div class="dialog-actions"><button class="btn" value="cancel">Keep working</button><button class="btn accent" value="close">End session</button></div></form></dialog>
 </div>
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/vendor/GLTFLoader.js"></script>
+<script src="/static/vendor/OrbitControls.js"></script>
+<script src="/static/vendor/STLLoader.js"></script>
 <script type="module" src="/static/app.js"></script>
   <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
     <form method="dialog" id="settings-form">

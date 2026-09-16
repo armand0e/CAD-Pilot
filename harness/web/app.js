@@ -369,28 +369,104 @@ function bestRenderName(project) {
   for (const v of ['render', 'three-quarter', 'threeq', 'face', 'iso', 'front']) if (views.includes(v)) return v;
   return views[0] || null;
 }
+// Interactive 3D preview via vendored three.js (global THREE). Loads each build's model.glb
+// (Blender, materials intact) or model.stl (CAD), so you can orbit the actual model live.
+const V3 = { renderer: null, scene: null, camera: null, controls: null, model: null, raf: null, token: 0 };
+function ensure3D() {
+  if (V3.renderer) return true;
+  if (typeof THREE === 'undefined') return false;
+  const canvas = $('preview-3d');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1e6);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.09; controls.enablePan = false;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x55504a, 1.0));
+  const key = new THREE.DirectionalLight(0xffffff, 1.7); key.position.set(1, 1.5, 1.2); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.55); fill.position.set(-1.2, 0.4, -0.8); scene.add(fill);
+  Object.assign(V3, { renderer, scene, camera, controls });
+  const loop = () => {
+    V3.raf = requestAnimationFrame(loop);
+    if (canvas.hidden) return;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    const px = renderer.getPixelRatio();
+    if (canvas.width !== Math.round(w * px) || canvas.height !== Math.round(h * px)) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+    controls.update(); renderer.render(scene, camera);
+  };
+  loop();
+  return true;
+}
+function clear3D() { if (V3.model) { V3.scene.remove(V3.model); V3.model = null; } }
+function frame3D(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 10;
+  obj.position.sub(center);
+  const d = maxDim * 1.9;
+  V3.controls.target.set(0, 0, 0);
+  V3.camera.position.set(d * 0.5, d * 0.32, d * 0.95);
+  V3.camera.near = maxDim / 200; V3.camera.far = maxDim * 200; V3.camera.updateProjectionMatrix();
+  V3.controls.update();
+}
+function loadSTL3D(project, head, token, place) {
+  new THREE.STLLoader().load(`/api/projects/${project.id}/${head}/model.stl?v=${head}`, (geo) => {
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xb9b3a7, metalness: 0.0, roughness: 0.72 }));
+    mesh.rotation.x = -Math.PI / 2; // STL is Z-up; three.js is Y-up
+    place(mesh);
+  }, undefined, () => {});
+}
+function load3D(project) {
+  if (!ensure3D()) return;
+  const head = project?.head;
+  const artifacts = head ? (project.revisions.find(r => r.id === head)?.sha256 || {}) : {};
+  if (!head) { clear3D(); return; }
+  const token = ++V3.token;
+  const place = (obj) => { if (token !== V3.token) return; clear3D(); V3.scene.add(obj); V3.model = obj; frame3D(obj); };
+  if ('model.glb' in artifacts) {
+    new THREE.GLTFLoader().load(`/api/projects/${project.id}/${head}/model.glb?v=${head}`,
+      (g) => place(g.scene), undefined, () => loadSTL3D(project, head, token, place));
+  } else if ('model.stl' in artifacts) {
+    loadSTL3D(project, head, token, place);
+  }
+}
+
 function updatePreview(project) {
-  const img = $('preview-img'), video = $('preview-video'), empty = $('preview-empty'), badge = $('preview-badge');
+  const img = $('preview-img'), video = $('preview-video'), empty = $('preview-empty'), badge = $('preview-badge'), c3d = $('preview-3d'), modes = $('preview-modes');
   const head = project?.head;
   const artifacts = head ? (project.revisions.find(r => r.id === head)?.sha256 || {}) : {};
   const hasAnim = 'animation.mp4' in artifacts;
-  const viewName = head ? bestRenderName(project) : null;
-  if (head && (viewName || hasAnim)) {
-    empty.hidden = true;
-    if (hasAnim) {
-      const src = `/api/projects/${project.id}/${head}/animation.mp4?v=${head}`;
-      if (video.getAttribute('src') !== src) video.src = src;
-      video.classList.remove('hidden'); img.hidden = true;
-    } else {
-      video.classList.add('hidden'); video.removeAttribute('src'); img.hidden = false;
-      img.src = `/api/projects/${project.id}/${head}/view-${viewName}.png?v=${head}`;
-    }
-    badge.hidden = false;
-    badge.textContent = `${projectEngine(project)} · ${head}${project.geometry?.printable === false ? ' · visual' : ''}`;
-  } else {
-    img.hidden = true; video.classList.add('hidden'); video.removeAttribute('src'); empty.hidden = false; badge.hidden = true;
+  const has3D = (typeof THREE !== 'undefined') && (('model.glb' in artifacts) || ('model.stl' in artifacts));
+  const renderView = head ? bestRenderName(project) : null;
+  if (!head || (!has3D && !renderView && !hasAnim)) {
+    c3d.hidden = true; img.hidden = true; video.classList.add('hidden'); video.removeAttribute('src'); empty.hidden = false; badge.hidden = true; modes.classList.add('hidden'); clear3D();
+    return;
   }
+  empty.hidden = true; badge.hidden = false;
+  badge.textContent = `${projectEngine(project)} · ${head}${project.geometry?.printable === false ? ' · visual' : ''}`;
+  modes.classList.remove('hidden');
+  modes.querySelector('[data-pmode="3d"]').hidden = !has3D;
+  modes.querySelector('[data-pmode="render"]').hidden = !renderView;
+  modes.querySelector('[data-pmode="anim"]').hidden = !hasAnim;
+  let mode = state.previewMode || '3d';
+  if (mode === '3d' && !has3D) mode = renderView ? 'render' : 'anim';
+  if (mode === 'render' && !renderView) mode = has3D ? '3d' : 'anim';
+  if (mode === 'anim' && !hasAnim) mode = has3D ? '3d' : 'render';
+  state.previewMode = mode;
+  for (const b of modes.querySelectorAll('[data-pmode]')) b.classList.toggle('on', b.dataset.pmode === mode);
+  c3d.hidden = mode !== '3d';
+  img.hidden = mode !== 'render';
+  video.classList.toggle('hidden', mode !== 'anim');
+  if (mode === '3d') load3D(project); else clear3D();
+  if (mode === 'render' && renderView) img.src = `/api/projects/${project.id}/${head}/view-${renderView}.png?v=${head}`;
+  if (mode === 'anim') { const src = `/api/projects/${project.id}/${head}/animation.mp4?v=${head}`; if (video.getAttribute('src') !== src) video.src = src; } else { video.removeAttribute('src'); }
 }
+function setPreviewMode(mode) { state.previewMode = mode; if (state.project) updatePreview(state.project); }
+for (const b of document.querySelectorAll('#preview-modes [data-pmode]')) b.onclick = () => setPreviewMode(b.dataset.pmode);
 function setViewMode(mode) {
   state.viewMode = mode;
   for (const b of document.querySelectorAll('#view-mode [data-view]')) b.classList.toggle('on', b.dataset.view === mode);
