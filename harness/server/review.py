@@ -86,4 +86,7 @@ async def review_revision(project, head, config):
         content = response.json()['choices'][0]['message']['content']
     if not isinstance(content, str) or not content.strip():
         raise ValueError('Empty review response')
-    return _validate(json.loads(content))
+    review = _validate(json.loads(content))
+    # Small reviewer models sometimes repeat one issue to fill the list; collapse duplicates.
+    review['issues'] = list(dict.fromkeys(review['issues']))
+    return review
