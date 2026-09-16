@@ -33,7 +33,10 @@ def mesh_for(shape):
 
 
 def detail(shape):
-    b = shape.optimalBoundingBox(False, False)
+    try:
+        b = shape.optimalBoundingBox(False, False)
+    except Exception:  # a non-solid visual mesh may not support the optimal box
+        b = shape.BoundBox
     return {**shape_summary(shape), 'bounds_mm': [b.XLength, b.YLength, b.ZLength],
             'min_mm': [b.XMin,b.YMin,b.ZMin], 'max_mm': [b.XMax,b.YMax,b.ZMax],
             'area_mm2': shape.Area, 'face_count': len(shape.Faces), 'edge_count': len(shape.Edges)}
@@ -42,24 +45,39 @@ def detail(shape):
 def build():
     design = json.loads(Path('design.json').read_text())
     shapes = []
+    visual = False
     if design['language'] in ('openscad', 'blender-python'):
         mesh = Mesh.Mesh('source.stl')
         if mesh.CountFacets > 400000:
             raise ValueError('Mesh exceeds 400000 facets; reduce tessellation, subdivision or decimate before export')
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh.Topology, 1e-6)
-        # Shells can include enclosed voids. Solid construction preserves their orientation.
-        outer, inner = [], []
-        for shell in shape.Shells:
-            solid = Part.makeSolid(shell)
-            (outer if solid.Volume > 0 else inner).append(solid)
-        for index, solid in enumerate(outer):
-            for cavity in inner:
-                inverse = cavity.copy()
-                inverse.reverse()
-                if solid.isInside(inverse.CenterOfMass, 1e-6, True):
-                    solid = solid.cut(inverse)
-            shapes.append((f'Part{index+1}', solid))
+        try:
+            # Shells can include enclosed voids. Solid construction preserves their orientation.
+            outer, inner = [], []
+            for shell in shape.Shells:
+                solid = Part.makeSolid(shell)
+                (outer if solid.Volume > 0 else inner).append(solid)
+            built = []
+            for index, solid in enumerate(outer):
+                for cavity in inner:
+                    inverse = cavity.copy()
+                    inverse.reverse()
+                    if solid.isInside(inverse.CenterOfMass, 1e-6, True):
+                        solid = solid.cut(inverse)
+                built.append((f'Part{index + 1}', solid))
+            if not built:
+                raise ValueError('no closed solids')
+            for _, candidate in built:
+                valid(candidate)
+            shapes = built
+        except Exception as error:  # noqa: BLE001
+            # A Blender mesh that is not watertight still renders and animates: keep it as a
+            # visual (non-printable) result instead of failing. OpenSCAD output stays strict.
+            if design['language'] != 'blender-python':
+                raise ValueError('Output must contain valid, positive-volume closed solids') from error
+            visual = True
+            shapes = [('Mesh', shape)]
     else:
         for row in json.loads(Path('build-parts.json').read_text()):
             shape = Part.Shape()
@@ -71,13 +89,17 @@ def build():
     objects, reports = [], []
     with zipfile.ZipFile('parts.zip', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, shape in shapes:
-            valid(shape)
+            if not visual:
+                valid(shape)
             obj = doc.addObject('PartDesign::Feature', name)
             obj.Shape = shape
             objects.append(obj)
             part_mesh = mesh_for(shape)
             part_mesh.write('part.stl')
-            audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
+            if visual:
+                audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh, not a verified printable solid.'}
+            else:
+                audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
             archive.write('part.stl', obj.Name + '.stl')
             reports.append({'feature': obj.Name, **detail(shape), 'stl_audit': audit})
     result = doc.addObject('PartDesign::Feature', 'CADPilotResult')
@@ -102,16 +124,24 @@ def build():
                                                      if Path('build-views.json').is_file() else None))
     if Path('view-render.png').is_file():
         saved_views.append('render')  # a Blender Cycles beauty view produced during the source build
-    report = {'valid_geometry': True, 'valid_solid': len(shape.Solids) == 1, **detail(shape),
+    report = {'valid_geometry': True, 'valid_solid': (not visual) and len(shape.Solids) == 1, **detail(shape),
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,
-              'representation': 'faceted mesh converted to BREP' if design['language'] in ('openscad', 'blender-python') else 'analytic BREP',
+              'representation': ('visual mesh (not a verified printable solid)' if visual else
+                                 'faceted mesh converted to BREP' if design['language'] in ('openscad', 'blender-python') else 'analytic BREP'),
               'views': saved_views}
-    try:
-        report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
-    except ValueError as error:
-        report['stl_audit'] = {'closed_oriented_edges': False, 'error': str(error),
-                               'notice': 'Assembly mesh may contain contacting/overlapping parts. Individually audited STL files are in parts.zip.'}
+    if visual:
+        report['printable'] = False
+        report['notice'] = ('Visual Blender result: rendered and animated, but the mesh is not a watertight solid, '
+                            'so it is not verified for printing. Make it watertight (SOLIDIFY, close holes, recalc '
+                            'normals) to print.')
+        report['stl_audit'] = {'closed_oriented_edges': False, 'notice': 'Visual mesh; printability not verified.'}
+    else:
+        try:
+            report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
+        except ValueError as error:
+            report['stl_audit'] = {'closed_oriented_edges': False, 'error': str(error),
+                                   'notice': 'Assembly mesh may contain contacting/overlapping parts. Individually audited STL files are in parts.zip.'}
     Path('geometry.json').write_text(json.dumps(report, allow_nan=False))
 
 

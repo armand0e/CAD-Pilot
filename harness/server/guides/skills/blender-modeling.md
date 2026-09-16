@@ -7,13 +7,18 @@ Blender headless, exports the mesh, and validates it as a printable solid the sa
 as the other engines. Use FreeCAD (model.py) instead for precise, parametric, tolerance
 -driven parts - a bracket or gear belongs there, a frog or a dragon belongs here.
 
-## Frame, scale, and the one hard rule
+## Frame, scale, and two build outcomes
 
 - One Blender unit = one millimetre. Build at millimetre scale (a 40 mm ball is
   radius 20). +Z is up, like CAD; put the base at the lowest Z.
-- THE HARD RULE: the exported mesh must be a watertight, manifold solid or the build
-  is rejected. No holes, no loose surfaces, no self-intersecting shells, consistent
-  normals. Every primitive below is watertight; keep it that way as you combine them.
+- Printable vs visual: if the mesh is a watertight, manifold solid, the build is a
+  normal printable revision (STEP, STL, solid audit). If it is NOT watertight (an open
+  surface, a sculpt with holes, Suzanne), the build still succeeds as a VISUAL result -
+  it renders and animates, but is marked not verified for printing. So sculpt and render
+  freely; when the user needs to print, make it watertight (SOLIDIFY, close holes, recalc
+  normals) and it becomes a printable solid.
+- Aim for watertight when the goal is a physical object; accept visual when the goal is a
+  render or animation. State which you are producing.
 - Keep the mesh under 400000 triangles. High subdivision explodes triangle count -
   levels 2-3 is plenty; decimate a dense sculpt before finishing.
 
@@ -76,7 +81,7 @@ for (x, y, z, r) in [(0,0,10,10), (0,0,26,7), (7,0,30,3)]:
 # metaballs convert to one watertight mesh at export.
 ```
 
-## Keep it watertight (the failures to avoid)
+## Watertight, when you want to print (skip if the goal is only a render)
 
 - An open surface (a plane, an unclosed extrude) is NOT a solid - give it thickness with
   SOLIDIFY, or close it, before it can print.
@@ -134,12 +139,12 @@ bpy.context.scene.frame_end = 48
 
 Keep it short (up to ~120 frames; longer is trimmed) - recording renders every frame, so
 it is slow. Animate transforms, shape keys, or an armature's pose bones. The still render
-and the printable mesh are the frame-1 state, so pose the important frame first. For a
+and the exported mesh are the frame-1 state, so pose the important frame first. For a
 turntable of the whole model, orbit the camera instead of spinning the object.
 
-Because the harness validates the mesh as a printable solid, every Blender build - animated
-or not - must be watertight and manifold. A non-watertight sculpt (an open surface, Suzanne)
-is rejected; give it thickness with SOLIDIFY or close it first.
+Animation and rendering do not require a watertight mesh - a sculpt or Suzanne animates as
+a visual result. Only add the watertight work (SOLIDIFY, close holes) when the user also
+wants to print it.
 
 ## Verify and hand off to CAD
 
