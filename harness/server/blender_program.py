@@ -5,6 +5,7 @@ It runs the model's bpy script from an empty scene, then exports every mesh it p
 one STL. That STL is validated in a separate FreeCAD process, exactly like the FreeCAD path;
 this launcher is never trusted to certify geometry. One Blender unit is one millimetre.
 """
+import os
 import sys
 
 import bpy
@@ -53,11 +54,19 @@ bpy.ops.wm.stl_export(filepath=out_stl, export_selected_objects=True,
                       apply_modifiers=True, global_scale=1.0, forward_axis='Y', up_axis='Z')
 print('BLENDER_EXPORT_OK objects=%d' % len(meshes))
 
+# glTF (.glb): a complete art asset carrying materials, textures, and any rig/animation, for
+# downstream tools. Exported before the studio props are added, so it holds only the model.
+try:
+    bpy.ops.export_scene.gltf(filepath=os.path.join(os.path.dirname(out_stl), 'model.glb'),
+                              export_format='GLB', use_selection=False, export_apply=True)
+    print('BLENDER_GLTF_OK')
+except Exception as error:  # noqa: BLE001 - the STL is the deliverable; glTF is a bonus
+    print('BLENDER_GLTF_SKIPPED %s' % error)
+
 # A Cycles "beauty" render showing the model's materials and lighting, saved beside the
 # STL as render.png. The mesh is already exported, so the camera/light/ground added here
 # never reach the printable output. Best-effort: a render failure must not fail the build.
 try:
-    import os
     import mathutils
     scene = bpy.context.scene
     lo = [1e30, 1e30, 1e30]
@@ -113,7 +122,6 @@ except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a rende
 # render a bounded MP4 with the same studio. Best-effort and frame/time-capped so it never
 # stalls a build; the printed mesh and the still render are unaffected.
 try:
-    import os
     scene = bpy.context.scene
     if scene.camera is not None and scene.frame_end > scene.frame_start:
         frames = min(scene.frame_end - scene.frame_start + 1, 120)

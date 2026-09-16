@@ -526,13 +526,17 @@ class SourceWorkspace:
                 (stage / 'model.scad').write_text('// FreeCAD Python build; faceted preview only.\nimport("model.stl");\n')
             elif entry.suffix == '.bpy':
                 result = await execute(scratch, ['/opt/blender/blender', '--background', '--python-exit-code', '1',
-                    '--python', '/blender_program.py', '--', relative, '/work/source.stl'], helpers=('blender_program.py',))
+                    '--python', '/blender_program.py', '--', relative, '/work/source.stl'], helpers=('blender_program.py',),
+                    images=[(self.project.path / 'attachments', 'attachments'), (self.project.path / 'research-images', 'research')])
                 if result['exitCode']:
                     raise ValueError(build_error(result['output'], result['exitCode']))
                 path = scratch / 'source.stl'
                 if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_FILE:
                     raise ValueError('Invalid Blender STL output')
                 shutil.copyfile(path, stage / 'source.stl')
+                glb = scratch / 'model.glb'
+                if glb.is_file() and not glb.is_symlink() and glb.stat().st_size <= MAX_FILE:
+                    shutil.copyfile(glb, stage / 'model.glb')  # glTF art asset with materials/rig/animation
                 render = scratch / 'render.png'
                 if render.is_file() and not render.is_symlink() and render.stat().st_size <= MAX_FILE:
                     shutil.copyfile(render, stage / 'view-render.png')  # Cycles beauty view, saved with the revision

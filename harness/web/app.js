@@ -232,7 +232,7 @@ function renderProject(project) {
   }
   $('model-downloads').replaceChildren();
   const artifacts=project.revisions.find(r=>r.id===project.head)?.sha256||{};
-  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','model.bpy':'Blender','design-spec.json':'Requirements','parts.zip':'Part STLs','animation.mp4':'Animation'}).filter(([name])=>name in artifacts)] : []) {
+  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','model.bpy':'Blender','model.glb':'glTF','design-spec.json':'Requirements','parts.zip':'Part STLs','animation.mp4':'Animation'}).filter(([name])=>name in artifacts)] : []) {
     const link = document.createElement('a'); link.textContent = `↓ ${name==='design.json'&&project.design?.format==='source-v1'?'Build info':name==='model.scad'&&project.design?.language==='freecad-python'?'OpenSCAD mesh preview':label}`;
     link.href = `/api/projects/${project.id}/${project.head}/${name}`; link.download = ''; $('model-downloads').append(link);
   }

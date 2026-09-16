@@ -115,9 +115,56 @@ key = bpy.data.objects.new('Key', bpy.data.lights.new('Key', 'AREA')); bpy.conte
 key.location = (40, -40, 60)
 ```
 
-Give different parts different materials so they read apart in the render. An image
-texture can drive Base Color for surface detail; keep textures simple. After the build,
-read the `render` view with view_image - it is the honest picture of the result.
+Give different parts different materials so they read apart in the render. After the
+build, read the `render` view with view_image - it is the honest picture of the result.
+Every build also exports model.glb (glTF): the mesh with its materials, textures and any
+rig or animation, downloadable for other tools.
+
+## Textures - procedural or from an image
+
+Procedural texture nodes need no files and give rich surface detail. Wire a Noise,
+Voronoi, Wave or Musgrave node into Base Color (through a Color Ramp) and into a Bump
+node feeding Normal for relief - rock, skin, bark, hammered metal:
+
+```python
+nt = mat.node_tree; bsdf = nt.nodes['Principled BSDF']
+noise = nt.nodes.new('ShaderNodeTexNoise'); noise.inputs['Scale'].default_value = 8; noise.inputs['Detail'].default_value = 6
+ramp = nt.nodes.new('ShaderNodeValToRGB'); nt.links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
+nt.links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
+bump = nt.nodes.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.3
+nt.links.new(noise.outputs['Fac'], bump.inputs['Height']); nt.links.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
+```
+
+An attached or research image can be a texture: it is mounted read-only at
+/work/images/attachments/<id> and /work/images/research/<id> (full-res <id>.original.png).
+
+```python
+img = bpy.data.images.load('/work/images/attachments/<id>.original.png')
+tex = nt.nodes.new('ShaderNodeTexImage'); tex.image = img
+nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+```
+
+## Rigging (armatures)
+
+An armature poses or animates a character. Build bones, parent the mesh with automatic
+weights, then pose the bones. The posed shape bakes into the exported mesh (and the rig
+travels in model.glb); animate the pose bones for a walk or a wave (see recording below).
+
+```python
+import bpy
+arm_data = bpy.data.armatures.new('Rig'); arm = bpy.data.objects.new('Rig', arm_data)
+bpy.context.collection.objects.link(arm); bpy.context.view_layer.objects.active = arm
+bpy.ops.object.mode_set(mode='EDIT')
+up = arm_data.edit_bones.new('upper'); up.head = (0, 0, 0);  up.tail = (0, 0, 20)
+lo = arm_data.edit_bones.new('lower'); lo.head = (0, 0, 20); lo.tail = (0, 0, 40); lo.parent = up
+bpy.ops.object.mode_set(mode='OBJECT')
+limb = bpy.context.scene.objects['Body']          # your watertight mesh
+limb.select_set(True); arm.select_set(True); bpy.context.view_layer.objects.active = arm
+bpy.ops.object.parent_set(type='ARMATURE_AUTO')   # skin the mesh to the bones
+bpy.ops.object.mode_set(mode='POSE')
+arm.pose.bones['lower'].rotation_mode = 'XYZ'; arm.pose.bones['lower'].rotation_euler = (0.6, 0, 0)
+bpy.ops.object.mode_set(mode='OBJECT')
+```
 
 ## Animation and recording (optional)
 
