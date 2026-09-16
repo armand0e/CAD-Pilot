@@ -230,6 +230,24 @@ async def project_info(project_id: str):
         raise HTTPException(409, str(error)) from error
 
 
+@app.post('/api/projects/{project_id}/review')
+async def review_project(project_id: str):
+    """Run the advisory reviewer on the project's current revision, on the user's request."""
+    import httpx
+    from .review import review_revision
+    project = _project(project_id)
+    head = project.read().get('head')
+    if not head:
+        raise HTTPException(409, 'Nothing has been built to review yet')
+    try:
+        result = await review_revision(project, head, CONFIG)
+    except (ValueError, KeyError, json.JSONDecodeError) as error:
+        raise HTTPException(502, f'Review unavailable: {error}') from error
+    except httpx.HTTPError as error:
+        raise HTTPException(502, f'Review model call failed: {error}') from error
+    return {'head': head, **result}
+
+
 @app.get('/api/projects/{project_id}/workspace')
 async def source_workspace(project_id: str):
     from .source_workspace import SourceWorkspace

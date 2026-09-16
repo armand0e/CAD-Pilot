@@ -158,6 +158,14 @@ select { min-height: 34px; padding: 5px 9px; background: var(--bg-elev); color: 
 .model-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .model-tools label { color: var(--text2); display: flex; align-items: center; gap: 8px; max-width: 100%; font-size: 11px; flex: 1; }
 .model-tools select { max-width: min(240px, 100%); min-width: 0; flex: 1; font-size: 11px; }
+.review-result { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-inset); font-size: 12px; line-height: 1.6; }
+.review-status { font-weight: 600; }
+.review-status.review-satisfactory { color: var(--good); }
+.review-status.review-revise, .review-status.review-needs_input { color: var(--warn); }
+.review-summary { margin: 6px 0 0; color: var(--text2); }
+.review-issues { margin: 8px 0 0; padding-left: 18px; }
+.review-issues li { margin: 3px 0; }
+.review-note { margin: 8px 0 0; font-size: 10px; color: var(--text2); opacity: .8; }
 .model-tools .btn { font-size: 11px; }
 .model-content p { font-size: 11px; color: var(--text3); margin: 10px 0; }
 #model-measurements { color: var(--text2); font-size: 12px; overflow-wrap: anywhere; }

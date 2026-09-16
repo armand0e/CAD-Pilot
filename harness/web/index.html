@@ -148,7 +148,8 @@
             <section class="model-section" aria-label="Modeling tools and revision history">
               <h3>Tools &amp; history</h3>
               <div class="model-tools"><label>Tools <select id="engine-select" aria-label="Modeling tools"><option value="hybrid">Native + visual</option><option value="visual">Visual only</option></select></label><button id="btn-use-saved" class="btn sm" title="Future native edits use the saved recipe, not unsaved viewport changes. Open documents are preserved.">Use saved revision</button></div>
-              <div class="model-tools"><label>History <select id="revision-select" aria-label="Saved revisions"></select></label><button id="btn-restore" class="btn sm">Restore as new revision</button></div>
+              <div class="model-tools"><label>History <select id="revision-select" aria-label="Saved revisions"></select></label><button id="btn-restore" class="btn sm">Restore as new revision</button><button id="btn-review" class="btn sm" title="Run an independent advisory review of the saved model against the request (form, features, and, for artistic work, craft quality).">Review this model</button></div>
+              <div id="review-result" class="review-result hidden"></div>
               <p id="model-warning">Edit Python or OpenSCAD source, draw custom profiles, and inspect saved geometry from any direction. Each successful build keeps a revision.</p>
             </section>
           </div>

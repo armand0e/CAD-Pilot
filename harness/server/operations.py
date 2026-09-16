@@ -1036,11 +1036,14 @@ the views, not just that the parts are present but that they are executed well: 
 (recognisable as the requested thing in outline alone); proportion (fits the subject and any
 stated style); whether the signature features read at real size and with relief (eyes with a
 real iris and a catchlight, not blank discs; a face that reads as a face); whether material
-zones and colours separate the parts; and whether lighting and framing make it legible (not
-crushed dark or muddy, not one flattering angle hiding a blank or unlit back). status=revise for
-work that is merely recognisable but poorly executed - blank or dead eyes, a dark or muddy
-render, off proportion, features that do not read, an unfinished back - each issue naming the
-weakest axis and the fix. Hold artistic work to what a person would call good, not just present.
+zones and colours separate the parts; SURFACE FINISH (colour-zone edges are clean, not
+stair-stepped, pixelated or blocky; no distracting faceting, seams or lumps where the form
+should be smooth - a common tell of a too-coarse voxel remesh or per-face colouring); and
+whether lighting and framing make it legible (not crushed dark or muddy, not one flattering
+angle hiding a blank or unlit back). status=revise for work that is merely recognisable but
+poorly executed - blank or dead eyes, stair-stepped or pixelated colour patches, a dark or
+muddy render, off proportion, features that do not read, an unfinished back - each issue naming
+the weakest axis and the fix. Hold artistic work to what a person would call good, not just present.
 """
 
 

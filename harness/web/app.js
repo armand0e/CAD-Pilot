@@ -33,6 +33,7 @@ function syncControls() {
   $("btn-new-task").disabled = state.running || !state.session;
   for (const id of ['engine-select', 'btn-use-saved', 'btn-restore']) $(id).disabled = state.running || state.projectBusy || !state.session?.project_id;
   if (!state.project?.head || $('revision-select').value === state.project.head) $('btn-restore').disabled = true;
+  $('btn-review').disabled = state.running || state.reviewBusy || !state.project?.head;
   $("btn-pause").textContent = state.paused ? "Resume" : "Pause";
   $("btn-stop").classList.toggle("hidden", !state.running);
   $("run-progress").textContent = state.nativeOperation ? (state.running ? `Build attempt ${state.nativeAttempt || 1}/3${state.nativeParent ? ` · base ${state.nativeParent}` : ''}` : `${state.completed} operation(s) completed this run`) :
@@ -212,8 +213,10 @@ async function loadProject() {
 
 function renderProject(project) {
   if (state.session?.project_id !== project.id) return;
+  const changedRevision = state.project?.head !== project.head;
   state.project = project;
   workspaceEditor.projectChanged(project);
+  if (changedRevision) $('review-result').classList.add('hidden');
   $('model-panel').classList.remove('hidden');
   $('model-name').textContent = project.head ? `${project.name} · ${project.head}` : 'No saved revision yet';
   $('model-status').textContent = project.geometry?.valid_solid ? '✓ Valid solid' : project.geometry?.valid_geometry ? `✓ ${project.geometry.solid_count} valid parts` : 'Native tools ready';
@@ -269,6 +272,41 @@ async function projectOperation(body) {
 $('engine-select').onchange = e => projectOperation({operation:'engine', engine:e.target.value});
 $('btn-use-saved').onclick = () => projectOperation({operation:'use_saved'});
 $('btn-restore').onclick = () => projectOperation({operation:'restore', revision:$('revision-select').value, expected_head:state.project?.head});
+
+function renderReview(panel, data) {
+  panel.replaceChildren();
+  const label = {satisfactory:'✓ Looks good', revise:'✎ Needs revision', needs_input:'? Needs input'}[data.status] || data.status;
+  const status = document.createElement('div');
+  status.className = 'review-status review-' + (data.status || 'unknown');
+  status.textContent = `Independent review${data.head ? ' · ' + data.head : ''}: ${label}`;
+  panel.append(status);
+  if (data.summary) { const s = document.createElement('p'); s.className = 'review-summary'; s.textContent = data.summary; panel.append(s); }
+  if (data.issues && data.issues.length) {
+    const ul = document.createElement('ul'); ul.className = 'review-issues';
+    for (const issue of data.issues) { const li = document.createElement('li'); li.textContent = issue; ul.append(li); }
+    panel.append(ul);
+  }
+  const note = document.createElement('p'); note.className = 'review-note';
+  note.textContent = 'Advisory review by a model — you decide. It is not fit certification.';
+  panel.append(note);
+}
+
+$('btn-review').onclick = async () => {
+  if (!state.project?.head || state.reviewBusy) return;
+  const panel = $('review-result');
+  state.reviewBusy = true; syncControls();
+  panel.classList.remove('hidden'); panel.replaceChildren(Object.assign(document.createElement('div'), {className:'review-status', textContent:'Reviewing the model…'}));
+  try {
+    const response = await fetch(`/api/projects/${state.project.id}/review`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Review failed');
+    renderReview(panel, data);
+  } catch (error) {
+    panel.replaceChildren(Object.assign(document.createElement('div'), {className:'review-status review-unknown', textContent:'Review unavailable: ' + error.message}));
+  } finally {
+    state.reviewBusy = false; syncControls();
+  }
+};
 $('revision-select').onchange = syncControls;
 
 function renderTabs() {
