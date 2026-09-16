@@ -42,12 +42,71 @@ def detail(shape):
             'area_mm2': shape.Area, 'face_count': len(shape.Faces), 'edge_count': len(shape.Edges)}
 
 
+def build_visual_mesh(mesh):
+    """Fast path for a dense organic/character mesh (e.g. an MB-Lab figure): keep it as a mesh
+    instead of the slow, enormous BREP conversion. Such a result is visual anyway (not a printable
+    analytic solid), so this produces the required artifacts from the mesh directly - seconds, not
+    minutes, and a small FCStd instead of one that blows the sandbox file limit."""
+    import shutil
+    shutil.copyfile('source.stl', 'model.stl')
+    box = mesh.BoundBox
+    bounds = [box.XLength, box.YLength, box.ZLength]
+    lo, hi = [box.XMin, box.YMin, box.ZMin], [box.XMax, box.YMax, box.ZMax]
+    fin = lambda x: x if isinstance(x, (int, float)) and math.isfinite(x) else 0.0
+    volume, area = fin(mesh.Volume), fin(mesh.Area)
+    doc = App.newDocument('CADPilot')
+    feature = doc.addObject('Mesh::Feature', 'CADPilotResult')
+    feature.Mesh = mesh
+    doc.recompute()
+    doc.saveAs('/work/model.FCStd')
+    # model.step must exist; a visual mesh has no meaningful analytic solid, so write a lightweight
+    # bounding-box STEP placeholder (the real deliverables are the STL and glTF).
+    placeholder = Part.makeBox(max(bounds[0], 1e-3), max(bounds[1], 1e-3), max(bounds[2], 1e-3), App.Vector(*lo))
+    Part.export([placeholder], '/work/model.step')
+    with zipfile.ZipFile('parts.zip', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write('model.stl', 'CADPilotResult.stl')
+    try:
+        saved_views = render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
+                                                         if Path('build-views.json').is_file() else None))
+    except Exception:  # noqa: BLE001 - a dense mesh can defeat the ortho renderer; the Blender beauty views remain
+        saved_views = []
+    if Path('view-render.png').is_file():
+        saved_views.append('render')
+    for extra in sorted(Path('/work').glob('view-*.png')):  # lit Blender beauty views (render + the model's angles)
+        name = extra.stem[len('view-'):]
+        if name and name not in saved_views:
+            saved_views.append(name)
+    audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh; printability not verified.'}
+    report = {'valid_geometry': True, 'valid_solid': False, 'solid_count': 0, 'printable': False,
+              'min_mm': lo, 'max_mm': hi, 'volume_mm3': volume, 'bounds_mm': bounds,
+              'area_mm2': area, 'face_count': mesh.CountFacets, 'edge_count': 0,
+              'parts': [{'feature': 'CADPilotResult', 'solid_count': 0, 'bounds_mm': bounds,
+                         'min_mm': lo, 'max_mm': hi, 'volume_mm3': volume, 'area_mm2': area,
+                         'face_count': mesh.CountFacets, 'edge_count': 0, 'stl_audit': audit}],
+              'result_object': 'CADPilotResult', 'faces': [], 'cuts': [], 'references': [],
+              'requirements_verified': False, 'representation': 'visual mesh (not a verified printable solid)',
+              'views': saved_views, 'stl_audit': audit,
+              'notice': ('Visual character/organic result: rendered (and animated) from a dense mesh and kept '
+                         'as a mesh rather than a printable solid - converting it to a BREP would be slow and '
+                         'huge. To print, reduce it to a watertight solid.')}
+    Path('geometry.json').write_text(json.dumps(report, allow_nan=False))
+
+
 def build():
     design = json.loads(Path('design.json').read_text())
     shapes = []
     visual = False
     if design['language'] in ('openscad', 'blender-python'):
         mesh = Mesh.Mesh('source.stl')
+        # A dense Blender mesh (character/organic sculpt - a printable part would be built in FreeCAD,
+        # and MB-Lab characters come out subdivided to hundreds of thousands of facets) is a visual
+        # result, not a printable analytic solid. Keep it as a mesh: no BREP, so the 400k solid-path
+        # limit does not apply - just guard against a truly pathological sculpt. This must come BEFORE
+        # the BREP facet check below. Simple watertight Blender solids under 20k stay printable.
+        if design['language'] == 'blender-python' and mesh.CountFacets > 20000:
+            if mesh.CountFacets > 3000000:
+                raise ValueError('Mesh exceeds 3000000 facets; decimate the sculpt before export')
+            return build_visual_mesh(mesh)
         if mesh.CountFacets > 400000:
             raise ValueError('Mesh exceeds 400000 facets; reduce tessellation, subdivision or decimate before export')
         shape = Part.Shape()

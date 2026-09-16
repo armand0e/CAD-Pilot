@@ -76,9 +76,10 @@ grade against character-anatomy.md - proportion first, then the face, hair and m
 
 ## Notes and honest limits
 
-- The MB-Lab mesh is dense and detailed - great for a visual render. For a printable solid, it is a
-  valid closed mesh; heavy edits can break watertightness, so check the audit and accept a visual
-  result if needed (blender-modeling.md).
+- MB-Lab finalises to a DENSE, subdivided mesh (hundreds of thousands of faces) - that is expected
+  and fine. The build keeps a dense character as a fast VISUAL result automatically; do NOT add
+  subdivision (it is already smooth) and do NOT decimate to force a printable solid - that just
+  slows things down and fights the pipeline. A character is a visual/render deliverable.
 - You get a professional BASE and do the styling; expect a strong, correctly-proportioned, stylised
   character - not a finished film asset. That is still leagues beyond primitives.
 

@@ -13,7 +13,10 @@ async def execute(directory, command, *, timeout=None, helpers=(), images=()):
     runtime = ROOT / 'apps/freecad-extracted'
     if not shutil.which('bwrap') or not (runtime / 'usr/bin/python').is_file():
         raise ValueError('CAD execution needs bubblewrap and the bundled FreeCAD runtime')
-    args = ['prlimit', '--as=8589934592', '--fsize=67108864', '--',
+    # Dense organic/character meshes (e.g. an MB-Lab figure) produce large intermediate files and
+    # need memory headroom: 512 MB max file, 12 GiB address space (was 64 MB / 8 GiB, which failed
+    # character builds with "File too large" and forced the model to decimate).
+    args = ['prlimit', '--as=12884901888', '--fsize=536870912', '--',
             'bwrap', '--unshare-all', '--die-with-parent', '--new-session', '--clearenv',
             '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64',
             '--symlink', 'usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
