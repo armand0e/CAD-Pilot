@@ -37,6 +37,11 @@ async def execute(directory, command, *, timeout=None, helpers=(), images=()):
     blender = ROOT / 'apps/blender-extracted'
     if (blender / 'blender').is_file():
         args += ['--ro-bind', str(blender), '/opt/blender']
+        # MB-Lab (parametric human/anime bases) as a Blender addon: expose it via a dedicated
+        # BLENDER_USER_SCRIPTS dir so `bpy.ops.mbast.*` is available to model.bpy in the sandbox.
+        mblab = ROOT / 'apps/mblab'
+        if (mblab / 'addons/MB_Lab/__init__.py').is_file():
+            args += ['--ro-bind', str(mblab), '/opt/mblab', '--setenv', 'BLENDER_USER_SCRIPTS', '/opt/mblab']
     args += command
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
                                                stderr=asyncio.subprocess.STDOUT, start_new_session=True)

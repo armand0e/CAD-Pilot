@@ -34,6 +34,21 @@ RUN (curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https:/
     && echo "${BLENDER_SHA256}  blender.tar.xz" | sha256sum -c - \
     && tar xf blender.tar.xz && mv "blender-${BLENDER_VERSION}-linux-x64" blender-extracted && rm blender.tar.xz
 
+# MB-Lab: a parametric human/anime character generator (GPL, base mesh derived from MakeHuman CC0).
+# Provides anatomically-correct, topologized, rigged human and anime bases for the Blender engine,
+# so characters start from a professional base instead of scripted primitives. Placed as a Blender
+# addon under a dedicated scripts dir that the sandbox exposes via BLENDER_USER_SCRIPTS.
+FROM ubuntu:24.04 AS mblab
+ARG MBLAB_REF=1_8_1
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && rm -rf /var/lib/apt/lists/*
+WORKDIR /download
+RUN curl -fL --retry 3 --connect-timeout 15 "https://github.com/animate1978/MB-Lab/archive/refs/tags/${MBLAB_REF}.zip" -o mblab.zip \
+    && unzip -q mblab.zip && mkdir -p /mblab/addons && mv "MB-Lab-${MBLAB_REF}" /mblab/addons/MB_Lab && rm mblab.zip \
+    # The self-updater writes a scratch dir/json inside its own addon folder on enable, which
+    # crashes registration when that folder is a read-only sandbox mount. Redirect that scratch
+    # path to /tmp (writable) so the addon loads; the network updater is unused in the sandbox anyway.
+    && sed -i 's|os.path.dirname(__file__), self._addon + "_updater")|"/tmp", self._addon + "_updater")|' /mblab/addons/MB_Lab/addon_updater.py
+
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -49,6 +64,7 @@ ENV PATH=/opt/venv/bin:$PATH PLAYWRIGHT_BROWSERS_PATH=/opt/chromium
 RUN python -m playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY --from=freecad /download/squashfs-root /opt/cadpilot/harness/apps/freecad-extracted
 COPY --from=blender /download/blender-extracted /opt/cadpilot/harness/apps/blender-extracted
+COPY --from=mblab /mblab /opt/cadpilot/harness/apps/mblab
 COPY --from=pi /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi /pi /opt/cadpilot/harness/pi
 COPY src/cad1000 src/cad1000

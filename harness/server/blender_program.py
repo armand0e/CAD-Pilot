@@ -21,6 +21,15 @@ user_script, out_stl = argv[0], argv[1]
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
+# Make MB-Lab available (parametric human/anime bases) so the model can build characters from a
+# professional base via bpy.ops.mbast.*. Best-effort: if it is absent or fails to load, a normal
+# build is unaffected.
+try:
+    bpy.ops.preferences.addon_enable(module='MB_Lab')
+    print('MBLAB_READY')
+except Exception as error:  # noqa: BLE001 - characters are optional; never block a build
+    print('MBLAB_UNAVAILABLE %s' % error)
+
 with open(user_script) as handle:
     code = compile(handle.read(), user_script, 'exec')
 user_ns = {'__name__': '__main__', 'bpy': bpy}

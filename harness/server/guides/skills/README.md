@@ -39,9 +39,12 @@ holds a gear), read both.
   fan / PCB / VESA / device mounts.
 - skills/figures-and-characters.md - people, animals, mascots, toys, stylised shapes;
   proportion, pose and a readable silhouette.
-- skills/character-anatomy.md - the proportion and anatomy layer for HUMANS, anime figures
-  and humanoids: head-height canon and landmarks, the body's masses (ribcage, waist, hips,
-  jointed limbs, the bust), the anime face and hair. Read before modelling any person.
+- skills/character-base-mesh.md - the PRIMARY way to make a human or anime character: start
+  from an MB-Lab parametric base (real anatomy, topology, rig), shape it, finalise, then add
+  hair/clothing/pose/materials. Use this for people and anime figures, not primitives.
+- skills/character-anatomy.md - the proportion and anatomy layer you judge a figure against:
+  head-height canon and landmarks, the body's masses (ribcage, waist, hips, jointed limbs, the
+  bust), the anime face and hair. Read alongside character-base-mesh.
 - skills/blender-modeling.md - the Blender engine (model.bpy): organic, sculpted,
   character and free-form mesh work where BREP primitives look crude, and the
   Blender-to-FreeCAD handoff for printing.

@@ -6,11 +6,16 @@ anime figure does not. This skill is the proportion and anatomy layer for any hu
 BEFORE a person, and build in Blender (model.bpy) with modeling-techniques.md and the staged
 process in blender-3d-workflow.md.
 
-Be realistic about the ceiling: a believable figure built from scripted primitives is genuinely
-hard. Getting the PROPORTIONS and the major MASSES right - a mannequin that reads as a real body
-in the correct ratios - is achievable and is 80% of the result. Fine surface anatomy (muscles,
-faces at portrait quality) is beyond what a primitive-and-remesh script reaches; aim for a clean,
-correctly-proportioned, appealing stylised figure, not a photoreal one.
+For the actual build, prefer character-base-mesh.md: start from an MB-Lab parametric base, which
+gives you real anatomy, topology and a rig for free, and customise it. That reaches far higher
+quality than building a body from primitives. Use THIS skill as the eye you judge the result with
+(proportions, masses, the face), and as the fallback when a base mesh does not fit (an unusual
+non-human humanoid, or full manual control).
+
+If you do build a figure by hand from primitives, be realistic about the ceiling: getting the
+PROPORTIONS and the major MASSES right - a mannequin that reads as a real body in the correct
+ratios - is achievable and is 80% of the result, but fine surface anatomy is beyond what a
+primitive-and-remesh script reaches. A base mesh avoids this ceiling entirely.
 
 ## 1. Choose the proportion system FIRST (in head-heights)
 

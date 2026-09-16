@@ -4,10 +4,10 @@ People, animals, mascots, toys, stylised objects. The goal is a readable silhoue
 someone should name it at a glance. You are not sculpting every detail; you are
 composing simple primitives into the right proportions and pose.
 
-For a HUMAN, an anime figure or any humanoid, read character-anatomy.md first - people need a
-real proportion system (head-heights, landmarks) and body masses (ribcage, waist, hips, jointed
-limbs, bust, the anime face) that a rounded mascot does not. This skill covers the simpler,
-rounder figures; that one covers bodies.
+For a HUMAN, an anime figure or any humanoid, use character-base-mesh.md - start from an MB-Lab
+parametric base with real anatomy, topology and a rig, and customise it (character-anatomy.md is
+the eye you judge it with). Do NOT build a person from primitives. This skill covers the simpler,
+rounder figures and animals where primitives are fine.
 
 ## Work from the silhouette and proportions
 
