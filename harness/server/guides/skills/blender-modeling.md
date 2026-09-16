@@ -1,0 +1,107 @@
+# Blender modelling (model.bpy)
+
+Blender is the engine for organic, sculpted, character and free-form work that BREP
+primitives make crude: creatures, figures with real anatomy, terrain, smooth flowing
+shapes. You write a Python (bpy) script in model.bpy and cad_build it; the harness runs
+Blender headless, exports the mesh, and validates it as a printable solid the same way
+as the other engines. Use FreeCAD (model.py) instead for precise, parametric, tolerance
+-driven parts - a bracket or gear belongs there, a frog or a dragon belongs here.
+
+## Frame, scale, and the one hard rule
+
+- One Blender unit = one millimetre. Build at millimetre scale (a 40 mm ball is
+  radius 20). +Z is up, like CAD; put the base at the lowest Z.
+- THE HARD RULE: the exported mesh must be a watertight, manifold solid or the build
+  is rejected. No holes, no loose surfaces, no self-intersecting shells, consistent
+  normals. Every primitive below is watertight; keep it that way as you combine them.
+- Keep the mesh under 400000 triangles. High subdivision explodes triangle count -
+  levels 2-3 is plenty; decimate a dense sculpt before finishing.
+
+## Building blocks
+
+```python
+import bpy
+
+# Watertight primitives (each is a closed solid):
+bpy.ops.mesh.primitive_uv_sphere_add(radius=15, location=(0, 0, 15), segments=48, ring_count=24)
+bpy.ops.mesh.primitive_cube_add(size=20, location=(0, 0, 10))
+bpy.ops.mesh.primitive_cylinder_add(radius=6, depth=30, location=(0, 0, 15))
+bpy.ops.mesh.primitive_cone_add(radius1=8, radius2=0, depth=16, location=(0, 0, 40))
+bpy.ops.mesh.primitive_torus_add(major_radius=12, minor_radius=3, location=(0, 0, 20))
+bpy.ops.mesh.primitive_monkey_add(size=20)   # Suzanne - a quick head/creature base
+```
+
+The active object is bpy.context.active_object; name it (obj.name = "Body") and move it
+with obj.location. Each separate object becomes its own solid in the export, so a body +
+a separate base are two solids (an assembly), while parts that must be one piece must be
+joined or fused (below).
+
+## Modifiers are the power - smooth, thicken, mirror, repeat
+
+```python
+obj = bpy.context.active_object
+
+def add(kind, **props):
+    m = obj.modifiers.new(kind.lower(), kind)
+    for k, v in props.items(): setattr(m, k, v)
+    return m
+
+add('SUBSURF', levels=2)                 # smooth an angular base into an organic form
+add('MIRROR', use_axis=(True, False, False))  # symmetry: model one half that CROSSES x=0 so the
+                                              # halves merge into one solid (a half that only touches
+                                              # the plane stays two solids); MIRROR merges at the seam
+add('BEVEL', width=1.0, segments=2)      # soften hard edges
+add('SOLIDIFY', thickness=2.0)           # give an open surface real wall thickness -> watertight
+add('SKIN')                              # turn a vertex/edge skeleton into a tubular limb/creature
+# Modifiers are applied automatically at export; you do not need to apply them by hand.
+```
+
+Sculpt-like smoothness comes from a low-poly base plus SUBSURF, not from sculpting by
+hand. For limbs, tails and tentacles, build an edge skeleton and add SKIN then SUBSURF.
+
+## Joining, symmetry and metaballs
+
+- One piece from several: select the objects and bpy.ops.object.join(), or use a BOOLEAN
+  modifier (operation='UNION') with another object as the target. Booleans can leave
+  non-manifold edges - prefer overlapping shapes joined by a union, and check watertight.
+- Symmetry: model one half and add a MIRROR modifier; guarantees a symmetric character.
+- Blobby, merging organic mass (a snowman, a slime, fused muscles): metaballs blend into
+  one smooth surface automatically.
+
+```python
+mb = bpy.data.metaballs.new('Blob'); obj = bpy.data.objects.new('Blob', mb)
+bpy.context.collection.objects.link(obj)
+for (x, y, z, r) in [(0,0,10,10), (0,0,26,7), (7,0,30,3)]:
+    e = mb.elements.new(); e.co = (x, y, z); e.radius = r
+# metaballs convert to one watertight mesh at export.
+```
+
+## Keep it watertight (the failures to avoid)
+
+- An open surface (a plane, an unclosed extrude) is NOT a solid - give it thickness with
+  SOLIDIFY, or close it, before it can print.
+- Flipped/inconsistent normals read as non-manifold: after heavy editing, recalc with
+  bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.normals_make_consistent(inside=False);
+  bpy.ops.object.mode_set(mode='OBJECT').
+- Booleans between meshes that only touch at a face or edge leave zero-thickness slivers;
+  overlap the shapes so the union has real volume.
+- Deleting the default cube is automatic; you start from an empty scene.
+
+## Verify and hand off to CAD
+
+- After cad_build, render and read the views (see verify-your-work.md); set views to a
+  three-quarter and a straight-on so the form and any face read.
+- For a recognisable subject, apply the figures-and-characters.md craft - proportion,
+  pose, features with relief - the modelling is just cleaner here.
+- To print with precise features (mounting holes, flats, tolerances), model the organic
+  form in model.bpy, then in a FreeCAD model.py import the exported STL
+  (import_reference then Mesh.Mesh) and add the precise features there.
+
+## Checklist
+
+- 1 unit = 1 mm, +Z up, base at the lowest Z, real millimetre size.
+- The result is watertight and manifold (it built - the audit enforces this) and under
+  400000 triangles.
+- Parts that are one object are joined/unioned; separate objects are a deliberate assembly.
+- Modifiers (subsurf/mirror/solidify) carry the organic quality; symmetry via MIRROR.
+- You rendered aimed views and it reads as the requested subject.

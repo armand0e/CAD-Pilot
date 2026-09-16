@@ -39,6 +39,9 @@ holds a gear), read both.
   fan / PCB / VESA / device mounts.
 - skills/figures-and-characters.md - people, animals, mascots, toys, stylised shapes;
   proportion, pose and a readable silhouette.
+- skills/blender-modeling.md - the Blender engine (model.bpy): organic, sculpted,
+  character and free-form mesh work where BREP primitives look crude, and the
+  Blender-to-FreeCAD handoff for printing.
 - skills/scenes-and-dioramas.md - several objects arranged on a base: ponds, terrains,
   desks, boards; composition, placement, scale, and a scene as a multi-part assembly.
 - skills/mechanisms-and-gears.md - gears, racks, shafts, bearing seats, motion.

@@ -34,6 +34,9 @@ async def execute(directory, command, *, timeout=None, helpers=(), images=()):
     scad = ROOT / 'apps/openscad-extracted'
     if (scad / 'AppRun').is_file():
         args += ['--ro-bind', str(scad), '/opt/scad']
+    blender = ROOT / 'apps/blender-extracted'
+    if (blender / 'blender').is_file():
+        args += ['--ro-bind', str(blender), '/opt/blender']
     args += command
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
                                                stderr=asyncio.subprocess.STDOUT, start_new_session=True)

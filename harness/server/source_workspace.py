@@ -155,6 +155,8 @@ class SourceWorkspace:
         else:
             self.file('model.py').write_text('import FreeCAD as App\nimport Part\n\nlength, width, height = 20, 10, 5\nparts = {"Model": Part.makeBox(length, width, height)}\n')
             self.file('model.scad').write_text('length=20; width=10; height=5;\ncube([length,width,height]);\n')
+            # Blender engine (build model.bpy for organic/sculpted/scene work). 1 unit = 1 mm, +Z up.
+            self.file('model.bpy').write_text('import bpy\n\nbpy.ops.mesh.primitive_uv_sphere_add(radius=10, location=(0, 0, 10))\n')
         atomic_json(self.meta, {'base_head': head, 'source_mode': source_head,
                                'baseline': {f['path']: f['sha256'] for f in self.files() if f['path'] not in RESERVED}})
 
@@ -416,7 +418,7 @@ class SourceWorkspace:
         return {'root': '/work', 'base_head': state.get('base_head'), 'source_mode': state.get('source_mode', False),
                 'files': files, 'dirty': {f['path']: f['sha256'] for f in files if f['path'] not in RESERVED} != state.get('baseline', {}),
                 'current_head': self.project.read()['head'], 'specification_path': '/work/design-spec.json', 'specification_version': self.spec()['version'],
-                'help': 'Read CAD_GUIDE.md and, for the task at hand, the matching playbook in skills/ (start with skills/README.md). Edit model.py/model.scad, then cad_build. Use cad_checkout after restoring or changing the project base.'}
+                'help': 'Read CAD_GUIDE.md and, for the task at hand, the matching playbook in skills/ (start with skills/README.md). Pick the engine by entrypoint: model.py (FreeCAD, precise/parametric parts), model.bpy (Blender, organic/sculpted/scene work), or model.scad (OpenSCAD). Edit one, then cad_build it. Use cad_checkout after restoring or changing the project base.'}
 
     async def fs(self, args):
         self.ensure()
@@ -478,8 +480,8 @@ class SourceWorkspace:
                 raise ValueError('The saved model changed after these source edits. Inspect both before cad_checkout.')
             self.checkout(expected_head)
         entry = self.file(entrypoint)
-        if entry.suffix not in ('.py', '.scad') or not entry.is_file():
-            raise ValueError('Entrypoint must be an existing .py or .scad workspace file')
+        if entry.suffix not in ('.py', '.scad', '.bpy') or not entry.is_file():
+            raise ValueError('Entrypoint must be an existing .py (FreeCAD), .scad (OpenSCAD) or .bpy (Blender) workspace file')
         self.sync_spec()
         files = self.files()
         if shutil.disk_usage(self.path).free < 2 * 1024**3:
@@ -522,6 +524,18 @@ class SourceWorkspace:
                 with zipfile.ZipFile(stage / 'source.zip') as archive:
                     (stage / 'model.py').write_bytes(archive.read(relative))
                 (stage / 'model.scad').write_text('// FreeCAD Python build; faceted preview only.\nimport("model.stl");\n')
+            elif entry.suffix == '.bpy':
+                result = await execute(scratch, ['/opt/blender/blender', '--background', '--python-exit-code', '1',
+                    '--python', '/blender_program.py', '--', relative, '/work/source.stl'], helpers=('blender_program.py',))
+                if result['exitCode']:
+                    raise ValueError(build_error(result['output'], result['exitCode']))
+                path = scratch / 'source.stl'
+                if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_FILE:
+                    raise ValueError('Invalid Blender STL output')
+                shutil.copyfile(path, stage / 'source.stl')
+                with zipfile.ZipFile(stage / 'source.zip') as archive:
+                    (stage / 'model.bpy').write_bytes(archive.read(relative))
+                (stage / 'model.scad').write_text('// Blender build; faceted preview only.\nimport("model.stl");\n')
             else:
                 scad = '/usr/bin/openscad' if Path('/usr/bin/openscad').is_file() else '/opt/scad/AppRun'
                 result = await execute(scratch, [scad, '-o', '/work/source.stl', relative])
@@ -536,7 +550,7 @@ class SourceWorkspace:
                     (stage / 'model.scad').write_bytes(archive.read(relative))
             (stage / 'program.log').write_text(result['output'])
             design = {'name': self.project.read()['name'] if expected_head else entry.stem,
-                      'format': 'source-v1', 'language': 'freecad-python' if entry.suffix == '.py' else 'openscad',
+                      'format': 'source-v1', 'language': {'.py': 'freecad-python', '.scad': 'openscad', '.bpy': 'blender-python'}[entry.suffix],
                       'entrypoint': relative, 'parameters': [], 'features': [], 'source_files': files}
             atomic_json(stage / 'design.json', design)
             atomic_json(stage / 'design-spec.json', self.spec())

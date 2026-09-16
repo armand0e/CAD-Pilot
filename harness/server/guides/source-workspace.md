@@ -4,7 +4,18 @@ Pi's read, write, edit and bash tools operate in /work, a persistent project dir
 Read CAD_GUIDE.md and design-spec.json at the start and after compaction. Use inspect
 for the current revision, file list, references, user input evidence and specification.
 
-Edit model.py (FreeCAD Python) or model.scad (OpenSCAD), and use cad_build with its
+Three engines are available; pick one per task by the entrypoint you cad_build:
+- model.py (FreeCAD Python) - precise, parametric, analytic BREP with exact STEP,
+  measurement and tolerances. Best for mechanical parts, brackets, enclosures, gears,
+  anything printed to fit or verified dimensionally. This is the default.
+- model.bpy (Blender Python, bpy) - mesh modelling for organic, sculpted, character
+  and free-form work where BREP primitives look crude. 1 Blender unit = 1 mm, +Z up.
+  The exported mesh must be watertight/manifold to build. See skills/blender-modeling.md.
+- model.scad (OpenSCAD) - algorithmic CSG.
+
+For work that starts organic and must be printed, model in Blender, then bring the mesh
+into a FreeCAD model.py for precise features and print polishing (import_reference on the
+STL, then Mesh/Part operations). Edit one entrypoint, then use cad_build with its
 entrypoint. File edits alone do not rebuild or replace the saved model. Multiple
 edits can be tested in one build. A failed build preserves both the draft and the
 last successful revision. Each successful revision includes its source and spec.

@@ -14,6 +14,17 @@ RUN curl -fL --retry 3 "https://github.com/FreeCAD/FreeCAD/releases/download/${F
     && chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract >/dev/null \
     && rm FreeCAD.AppImage
 
+FROM ubuntu:24.04 AS blender
+ARG BLENDER_SERIES=4.2
+ARG BLENDER_VERSION=4.2.9
+ARG BLENDER_SHA256=dfbc127a7d28f9c2175b23bf9d6701b2855f31eedfb391f9a6e60adb24572846
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils && rm -rf /var/lib/apt/lists/*
+WORKDIR /download
+RUN (curl -fL --retry 3 "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
+     || curl -fL --retry 3 "https://mirror.clarkson.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz) \
+    && echo "${BLENDER_SHA256}  blender.tar.xz" | sha256sum -c - \
+    && tar xf blender.tar.xz && mv "blender-${BLENDER_VERSION}-linux-x64" blender-extracted && rm blender.tar.xz
+
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,6 +39,7 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r /tm
 ENV PATH=/opt/venv/bin:$PATH PLAYWRIGHT_BROWSERS_PATH=/opt/chromium
 RUN python -m playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY --from=freecad /download/squashfs-root /opt/cadpilot/harness/apps/freecad-extracted
+COPY --from=blender /download/blender-extracted /opt/cadpilot/harness/apps/blender-extracted
 COPY --from=pi /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi /pi /opt/cadpilot/harness/pi
 COPY src/cad1000 src/cad1000

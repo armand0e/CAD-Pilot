@@ -42,10 +42,10 @@ def detail(shape):
 def build():
     design = json.loads(Path('design.json').read_text())
     shapes = []
-    if design['language'] == 'openscad':
+    if design['language'] in ('openscad', 'blender-python'):
         mesh = Mesh.Mesh('source.stl')
         if mesh.CountFacets > 400000:
-            raise ValueError('OpenSCAD mesh exceeds 400000 facets; reduce tessellation')
+            raise ValueError('Mesh exceeds 400000 facets; reduce tessellation, subdivision or decimate before export')
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh.Topology, 1e-6)
         # Shells can include enclosed voids. Solid construction preserves their orientation.
@@ -101,7 +101,7 @@ def build():
     report = {'valid_geometry': True, 'valid_solid': len(shape.Solids) == 1, **detail(shape),
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,
-              'representation': 'faceted mesh converted to BREP' if design['language'] == 'openscad' else 'analytic BREP',
+              'representation': 'faceted mesh converted to BREP' if design['language'] in ('openscad', 'blender-python') else 'analytic BREP',
               'views': render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
                                                           if Path('build-views.json').is_file() else None))}
     try:
