@@ -4,6 +4,11 @@ People, animals, mascots, toys, stylised objects. The goal is a readable silhoue
 someone should name it at a glance. You are not sculpting every detail; you are
 composing simple primitives into the right proportions and pose.
 
+For a HUMAN, an anime figure or any humanoid, read character-anatomy.md first - people need a
+real proportion system (head-heights, landmarks) and body masses (ribcage, waist, hips, jointed
+limbs, bust, the anime face) that a rounded mascot does not. This skill covers the simpler,
+rounder figures; that one covers bodies.
+
 ## Work from the silhouette and proportions
 
 Before any code, state the defining features and their proportions in words, then in

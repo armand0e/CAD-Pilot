@@ -39,6 +39,9 @@ holds a gear), read both.
   fan / PCB / VESA / device mounts.
 - skills/figures-and-characters.md - people, animals, mascots, toys, stylised shapes;
   proportion, pose and a readable silhouette.
+- skills/character-anatomy.md - the proportion and anatomy layer for HUMANS, anime figures
+  and humanoids: head-height canon and landmarks, the body's masses (ribcage, waist, hips,
+  jointed limbs, the bust), the anime face and hair. Read before modelling any person.
 - skills/blender-modeling.md - the Blender engine (model.bpy): organic, sculpted,
   character and free-form mesh work where BREP primitives look crude, and the
   Blender-to-FreeCAD handoff for printing.
