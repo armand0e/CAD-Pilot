@@ -79,6 +79,39 @@ The same idea gives a button (ring + dome), a mouth (a recessed groove, not a pa
 line), or a badge (raised border + relief inside). Verify it front-on: set a saved
 view straight at the face and read it (see verify-your-work.md).
 
+## Cute cartoon eyes that read (in Blender, with colour)
+
+In Blender you have materials, so an eye reads through BOTH relief and colour. The rule that
+makes or breaks a cute character: BIG EYES WITH A BIG DARK IRIS. The dark iris/pupil should
+fill roughly half to two-thirds of the eye; a tiny pupil on a big white eye looks blank and
+dead (the owl-with-pinprick-pupils look). Add a small bright catchlight and the eye comes
+alive. Set the eyes on a facial plane - for an owl, a shallow facial DISC - not as bare
+spheres on the forehead, and place them at or just above the middle of the face.
+
+```python
+import bpy
+def cute_eye(ex, ez, face_y, R=7.0):
+    # white of the eye: a sphere set into the face so mainly the front cap shows
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=R, location=(ex, face_y + 0.55 * R, ez))
+    white = bpy.context.active_object
+    # BIG dark iris: a dome ~0.62 R standing proud of the white - this is what reads as an eye
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.62 * R, location=(ex, face_y - 0.15 * R, ez))
+    iris = bpy.context.active_object
+    # tiny bright catchlight high on the iris - makes the eye look alive, not glassy-dead
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14 * R,
+        location=(ex - 0.22 * R, face_y - 0.55 * R, ez + 0.30 * R))
+    spark = bpy.context.active_object
+    return white, iris, spark
+# two eyes, close and forward-facing on the face (mirror across x); iris material near-black,
+# low roughness (glossy); catchlight an emissive white (Emission Strength ~3). Space centres
+# about one eye-width apart so they sit close, the way big cute eyes do.
+```
+
+Two cautions from real failures: keep the iris LARGE (do not shrink it to a dot), and after
+a voxel remesh assign the eye materials by vertex position - iris polys are the ones furthest
+forward (most negative Y) near each eye centre. Confirm it front-on in a lit face view: if the
+pupils do not clearly read as dark, they are too small or the render is too dark, not both.
+
 ## Checklist
 
 - Proportions match the real thing (state the ratio, e.g. body 2:1) and read in front/iso.

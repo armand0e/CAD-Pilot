@@ -540,6 +540,9 @@ class SourceWorkspace:
                 render = scratch / 'render.png'
                 if render.is_file() and not render.is_symlink() and render.stat().st_size <= MAX_FILE:
                     shutil.copyfile(render, stage / 'view-render.png')  # Cycles beauty view, saved with the revision
+                for extra in sorted(scratch.glob('view-*.png')):  # beauty views rendered from the model's own `views`
+                    if extra.is_file() and not extra.is_symlink() and extra.stat().st_size <= MAX_FILE:
+                        shutil.copyfile(extra, stage / extra.name)
                 animation = scratch / 'animation.mp4'
                 if animation.is_file() and not animation.is_symlink() and animation.stat().st_size <= MAX_FILE:
                     shutil.copyfile(animation, stage / 'animation.mp4')  # recorded MP4 when the model animated

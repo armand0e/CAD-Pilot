@@ -132,6 +132,10 @@ def build():
                                                      if Path('build-views.json').is_file() else None))
     if Path('view-render.png').is_file():
         saved_views.append('render')  # a Blender Cycles beauty view produced during the source build
+    for extra in sorted(Path('/work').glob('view-*.png')):  # lit beauty views from the model's own `views` angles
+        name = extra.stem[len('view-'):]
+        if name and name not in saved_views:
+            saved_views.append(name)
     report = {'valid_geometry': True, 'valid_solid': (not visual) and len(shape.Solids) == 1, **detail(shape),
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,

@@ -54,11 +54,21 @@ one remeshed form almost always reads better.
 
 ## 4. Secondary forms and features - with relief
 
-Add the features it is recognised by: face (eyes, nose, mouth as RELIEF - a raised rim
-and a lens, not a flat disc; see figures-and-characters.md), hair as flowing masses or
-strands, clothing as offset surfaces (SOLIDIFY a shell), accessories. Each feature
-overlaps and, if it must print as one piece, is remeshed in or fused. Keep features large
-enough to read at the model's real size.
+Add the features it is recognised by: face, hair as flowing masses or strands, clothing as
+offset surfaces (SOLIDIFY a shell), accessories. Each feature overlaps and, if it must print
+as one piece, is remeshed in or fused. Keep features large enough to read at the model's real
+size.
+
+Eyes make or break a character, so build them properly (full recipe in
+figures-and-characters.md). The rules that matter most:
+- Put the eyes on a FACE - a slightly flattened facial plane on the front, not bare balls
+  stuck on a forehead. For a face like an owl's, that plane is a shallow facial DISC.
+- Each eye is three depths: a white set into the face, a LARGE dark iris/pupil dome standing
+  proud, and a tiny bright catchlight. CUTE MEANS BIG DARK EYES: the iris fills roughly half
+  to two-thirds of the eye. A tiny pupil reads blank and dead - the single most common way a
+  cute character goes wrong (an owl with pinprick pupils looks stuffed, not charming).
+- Place them at or just above the middle of the face, spaced about one eye-width apart
+  (cute characters have big eyes set close), and confirm they read in a straight-on face view.
 
 ## 5. Detail and cleanup
 
@@ -89,10 +99,15 @@ the readable pose a moment. Keep it short (the build caps ~120 frames).
 
 ## 9. Light, camera and render
 
-Frame the camera on the defining view (usually a three-quarter of the face/front). Light
-with a key plus fill so form reads and shadows are not harsh. Set views = {...} to the
-angles that expose the model's features and its weak spots. The build renders Cycles for
-you; make the scene worth rendering.
+Frame the camera on the defining view (usually a three-quarter of the face/front). Light it
+properly - the build renders Cycles with YOUR camera and YOUR lights, so if you light it
+badly the render is bad. Use three-point light, not one lamp: a key (AREA, ~900W, above and
+to one side), a fill opposite at about a quarter power (~220W) so the shadow side still
+reads, and a rim behind to pop the edges. A lone key with no fill and no world crushes half
+the model to black - that is the classic dim, muddy render. Give the world a little strength
+too. Concrete energies and aiming are in lighting-and-rendering.md. Set views = {...} to the
+angles that expose the model's features and its weak spots; the build re-renders those in
+full lit colour so you can check the finished look from each one.
 
 ## 10. Grade your own work, then iterate
 

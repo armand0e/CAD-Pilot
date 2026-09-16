@@ -6,9 +6,11 @@ one STL. That STL is validated in a separate FreeCAD process, exactly like the F
 this launcher is never trusted to certify geometry. One Blender unit is one millimetre.
 """
 import os
+import re
 import sys
 
 import bpy
+import mathutils
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 if len(argv) < 2:
@@ -21,7 +23,8 @@ bpy.ops.object.delete()
 
 with open(user_script) as handle:
     code = compile(handle.read(), user_script, 'exec')
-exec(code, {'__name__': '__main__', 'bpy': bpy})  # noqa: S102 - untrusted, contained by the sandbox
+user_ns = {'__name__': '__main__', 'bpy': bpy}
+exec(code, user_ns)  # noqa: S102 - untrusted, contained by the sandbox
 
 # Evaluate procedural objects (metaballs, modifiers) before converting/collecting.
 bpy.context.view_layer.update()
@@ -66,8 +69,12 @@ except Exception as error:  # noqa: BLE001 - the STL is the deliverable; glTF is
 # A Cycles "beauty" render showing the model's materials and lighting, saved beside the
 # STL as render.png. The mesh is already exported, so the camera/light/ground added here
 # never reach the printable output. Best-effort: a render failure must not fail the build.
+out_dir = os.path.dirname(out_stl)
+render_ok = False
+center = mathutils.Vector((0.0, 0.0, 0.0))
+span = 10.0
+beauty_cam = None
 try:
-    import mathutils
     scene = bpy.context.scene
     lo = [1e30, 1e30, 1e30]
     hi = [-1e30, -1e30, -1e30]
@@ -91,6 +98,7 @@ try:
             camera.location = center + mathutils.Vector((reach * 0.8, -reach, reach * 0.55))
             camera.rotation_euler = (center - camera.location).to_track_quat('-Z', 'Y').to_euler()
         scene.camera = camera
+    beauty_cam = scene.camera
     if not any(o.type == 'LIGHT' for o in scene.objects):
         sun = bpy.data.lights.new('StudioSun', 'SUN')
         sun.energy = 4.0
@@ -104,19 +112,62 @@ try:
             mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.72, 0.72, 0.75, 1)
             obj.data.materials.append(mat)
     bpy.ops.mesh.primitive_plane_add(size=span * 8, location=(center[0], center[1], lo[2]))
+    # A soft ambient floor so unlit sides never crush to pure black - a real studio always has
+    # some bounce, and the model needs to SEE its whole surface to self-check. Only added when
+    # the model did not author its own world, so a deliberate lighting design is left untouched.
     if scene.world is None:
         scene.world = bpy.data.worlds.new('StudioWorld')
+        scene.world.use_nodes = True
+        background = scene.world.node_tree.nodes.get('Background')
+        if background is not None:
+            background.inputs['Color'].default_value = (0.05, 0.05, 0.06, 1.0)
+            background.inputs['Strength'].default_value = 0.5
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
     scene.cycles.samples = 48
     scene.cycles.time_limit = 45  # seconds - never block a build on rendering
     scene.render.resolution_x = scene.render.resolution_y = 640
     scene.render.image_settings.file_format = 'PNG'
-    scene.render.filepath = os.path.join(os.path.dirname(out_stl), 'render.png')
+    scene.render.filepath = os.path.join(out_dir, 'render.png')
     bpy.ops.render.render(write_still=True)
+    render_ok = True
     print('BLENDER_RENDER_OK')
 except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a render is a bonus
     print('BLENDER_RENDER_SKIPPED %s' % error)
+
+# Saved views: re-render the model's own `views` directions in the same lit studio, so it can
+# check its finished, textured, lit work from the angles it chose - not just the grey mesh. Each
+# is a quick pass (fewer samples, tight time cap) written as view-<name>.png beside the STL.
+try:
+    user_views = user_ns.get('views')
+    if render_ok and isinstance(user_views, dict) and user_views:
+        scene = bpy.context.scene
+        view_data = bpy.data.cameras.new('ViewCam')
+        view_data.lens = 55
+        view_cam = bpy.data.objects.new('ViewCam', view_data)
+        scene.collection.objects.link(view_cam)
+        scene.camera = view_cam
+        scene.cycles.samples = 24
+        scene.cycles.time_limit = 20
+        reach = span * 2.2
+        for raw_name, vec in list(user_views.items())[:4]:
+            try:
+                direction = mathutils.Vector((float(vec[0]), float(vec[1]), float(vec[2])))
+                if direction.length < 1e-6:
+                    continue
+                name = re.sub(r'[^a-z0-9_-]', '', str(raw_name).lower())[:24] or 'view'
+                if name == 'render':
+                    continue  # reserved for the main beauty still
+                view_cam.location = center + direction.normalized() * reach
+                view_cam.rotation_euler = (center - view_cam.location).to_track_quat('-Z', 'Y').to_euler()
+                scene.render.filepath = os.path.join(out_dir, 'view-%s.png' % name)
+                bpy.ops.render.render(write_still=True)
+                print('BLENDER_VIEW_OK %s' % name)
+            except Exception as view_error:  # noqa: BLE001 - one bad view must not lose the rest
+                print('BLENDER_VIEW_SKIPPED %s %s' % (raw_name, view_error))
+        scene.camera = beauty_cam  # restore for any animation pass below
+except Exception as error:  # noqa: BLE001
+    print('BLENDER_VIEWS_SKIPPED %s' % error)
 
 # Recording: if the model set a multi-frame timeline (keyframes and frame_end > frame_start),
 # render a bounded MP4 with the same studio. Best-effort and frame/time-capped so it never

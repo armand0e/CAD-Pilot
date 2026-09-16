@@ -30,6 +30,17 @@ for L in (key, fill, rim):
     L.rotation_euler = (mathutils.Vector((0,0,40)) - L.location).to_track_quat('-Z','Y').to_euler()
 ```
 
+## Exposure - do not render dark
+
+The most common render failure is simply too dark: a single key, no fill, no world, and half
+the model falls into black where nothing can be read. The harness adds only a faint ambient
+floor when you set no world at all - it will NOT light the scene for you, so YOU must. Always
+give it a fill and some world strength alongside the key. After the render comes back, look at
+it: if the shadow side is crushed, the colours are muddy, or you cannot make out a feature
+(dark pupils on a dark face), the scene is underlit - raise the key, raise the fill, or lift
+world strength, and re-render. A cheerful subject (a toy, a cute character) wants bright, open
+light, not moody contrast. Aim for a render where every part of the form is clearly visible.
+
 ## Environment and mood
 
 Set the world colour and strength for ambient light and background tone. A dim cool world
@@ -71,8 +82,10 @@ cam.rotation_euler = (mathutils.Vector((0,0,40)) - cam.location).to_track_quat('
 ## Also set the saved views
 
 Beyond the beauty render, set views = {...} (blender-modeling.md) to the angles that show
-the model's features and expose its flaws - a straight-on face, a profile, a back. The
-review reads these, so aim them honestly.
+the model's features and expose its flaws - a straight-on face, a profile, a back. The build
+re-renders each of those in the SAME lit, textured studio (not just the grey mesh), so you
+get your finished model shot from every angle you named - use them to catch a blank profile
+or an unlit back. The review reads these too, so aim them honestly.
 
 ## Checklist
 
