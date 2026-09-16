@@ -107,10 +107,15 @@ def cute_eye(ex, ez, face_y, R=7.0):
 # about one eye-width apart so they sit close, the way big cute eyes do.
 ```
 
-Two cautions from real failures: keep the iris LARGE (do not shrink it to a dot), and after
-a voxel remesh assign the eye materials by vertex position - iris polys are the ones furthest
-forward (most negative Y) near each eye centre. Confirm it front-on in a lit face view: if the
-pupils do not clearly read as dark, they are too small or the render is too dark, not both.
+Two cautions from real failures: keep the iris LARGE (do not shrink it to a dot), and mind how
+you colour the zones. Assigning a material per polygon by position ON A COARSE VOXEL REMESH gives
+stair-stepped, pixelated colour boundaries (a jagged white eye-ring or belly patch) because the
+zone edge follows the blocky remesh grid. Avoid that: either keep the coloured parts - eye whites,
+belly patch, iris - as SEPARATE overlapping meshes each with its own material (no per-face
+assignment, so their edges stay smooth), or if you do assign per face on one remeshed body, use a
+fine enough voxel_size that the boundary reads clean. Confirm it front-on in a lit face view: if the
+pupils do not clearly read as dark, they are too small or the render is too dark; if a colour patch
+looks pixelated at its edge, the remesh is too coarse for per-face zones - use separate meshes.
 
 ## Checklist
 
