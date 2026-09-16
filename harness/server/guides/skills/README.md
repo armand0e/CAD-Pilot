@@ -39,26 +39,6 @@ holds a gear), read both.
   fan / PCB / VESA / device mounts.
 - skills/figures-and-characters.md - people, animals, mascots, toys, stylised shapes;
   proportion, pose and a readable silhouette.
-- skills/character-base-mesh.md - the PRIMARY way to make a human or anime character: start
-  from an MB-Lab parametric base (real anatomy, topology, rig), shape it, finalise, then add
-  hair/clothing/pose/materials. Use this for people and anime figures, not primitives.
-- skills/character-anatomy.md - the proportion and anatomy layer you judge a figure against:
-  head-height canon and landmarks, the body's masses (ribcage, waist, hips, jointed limbs, the
-  bust), the anime face and hair. Read alongside character-base-mesh.
-- skills/blender-modeling.md - the Blender engine (model.bpy): organic, sculpted,
-  character and free-form mesh work where BREP primitives look crude, and the
-  Blender-to-FreeCAD handoff for printing.
-- skills/blender-3d-workflow.md - the professional step-by-step process for a proper
-  3D model or character (plan, blockout, forms, remesh, features, texture, rig,
-  animate, light, render, grade). Read this first for any serious Blender character.
-- skills/modeling-techniques.md - how to actually build a mesh: box modelling with
-  bmesh, modifiers, topology, and hard-surface vs organic. The core craft.
-- skills/texturing-and-materials.md - PBR materials, material zones, procedural and
-  image textures, UV unwrapping, realistic vs stylised.
-- skills/lighting-and-rendering.md - three-point lighting, world and mood, camera lens
-  and composition, tone mapping - presentation is half the result.
-- skills/animation-principles.md - timing, easing, anticipation, follow-through, arcs;
-  turntables, idles, gestures, loops.
 - skills/scenes-and-dioramas.md - several objects arranged on a base: ponds, terrains,
   desks, boards; composition, placement, scale, and a scene as a multi-part assembly.
 - skills/mechanisms-and-gears.md - gears, racks, shafts, bearing seats, motion.

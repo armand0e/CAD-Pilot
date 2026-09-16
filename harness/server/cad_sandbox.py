@@ -13,10 +13,7 @@ async def execute(directory, command, *, timeout=None, helpers=(), images=()):
     runtime = ROOT / 'apps/freecad-extracted'
     if not shutil.which('bwrap') or not (runtime / 'usr/bin/python').is_file():
         raise ValueError('CAD execution needs bubblewrap and the bundled FreeCAD runtime')
-    # Dense organic/character meshes (e.g. an MB-Lab figure) produce large intermediate files and
-    # need memory headroom: 512 MB max file, 12 GiB address space (was 64 MB / 8 GiB, which failed
-    # character builds with "File too large" and forced the model to decimate).
-    args = ['prlimit', '--as=12884901888', '--fsize=536870912', '--',
+    args = ['prlimit', '--as=8589934592', '--fsize=67108864', '--',
             'bwrap', '--unshare-all', '--die-with-parent', '--new-session', '--clearenv',
             '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64',
             '--symlink', 'usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
@@ -37,14 +34,6 @@ async def execute(directory, command, *, timeout=None, helpers=(), images=()):
     scad = ROOT / 'apps/openscad-extracted'
     if (scad / 'AppRun').is_file():
         args += ['--ro-bind', str(scad), '/opt/scad']
-    blender = ROOT / 'apps/blender-extracted'
-    if (blender / 'blender').is_file():
-        args += ['--ro-bind', str(blender), '/opt/blender']
-        # MB-Lab (parametric human/anime bases) as a Blender addon: expose it via a dedicated
-        # BLENDER_USER_SCRIPTS dir so `bpy.ops.mbast.*` is available to model.bpy in the sandbox.
-        mblab = ROOT / 'apps/mblab'
-        if (mblab / 'addons/MB_Lab/__init__.py').is_file():
-            args += ['--ro-bind', str(mblab), '/opt/mblab', '--setenv', 'BLENDER_USER_SCRIPTS', '/opt/mblab']
     args += command
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
                                                stderr=asyncio.subprocess.STDOUT, start_new_session=True)

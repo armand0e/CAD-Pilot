@@ -16,7 +16,6 @@ KNOWN_APPS: dict[str, dict] = {
     "librecad": {"name": "LibreCAD", "binaries": ["librecad"], "flatpaks": ["org.librecad.librecad"], "snaps": ["librecad"], "accent": "#3498db"},
     "qcad": {"name": "QCAD", "binaries": ["qcad"], "flatpaks": [], "snaps": ["qcad"], "accent": "#9b59b6"},
     "solvespace": {"name": "SolveSpace", "binaries": ["solvespace"], "flatpaks": ["com.solvespace.SolveSpace"], "snaps": ["solvespace"], "accent": "#1abc9c"},
-    "blender": {"name": "Blender", "binaries": ["blender"], "flatpaks": ["org.blender.Blender"], "snaps": ["blender"], "accent": "#e67e22"},
     "kicad": {"name": "KiCad", "binaries": ["kicad"], "flatpaks": ["org.kicad.KiCad"], "snaps": ["kicad"], "accent": "#2ecc71"},
     "sweethome3d": {"name": "Sweet Home 3D", "binaries": ["sweethome3d"], "flatpaks": ["com.sweethome3d.Sweethome3d"], "snaps": [], "accent": "#95a5a6"},
 }

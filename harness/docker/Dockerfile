@@ -14,41 +14,6 @@ RUN curl -fL --retry 3 "https://github.com/FreeCAD/FreeCAD/releases/download/${F
     && chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract >/dev/null \
     && rm FreeCAD.AppImage
 
-FROM ubuntu:24.04 AS blender
-ARG BLENDER_SERIES=4.2
-ARG BLENDER_VERSION=4.2.9
-ARG BLENDER_SHA256=dfbc127a7d28f9c2175b23bf9d6701b2855f31eedfb391f9a6e60adb24572846
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils && rm -rf /var/lib/apt/lists/*
-WORKDIR /download
-# download.blender.org (the origin) is heavily rate-limited to near-zero, and inside Docker's NAT
-# network some mirrors collapse too (Clarkson: 17 MB/s on the host but 0.5 MB/s in a container),
-# while ftp.halifax.rwth-aachen.de holds ~10 MB/s in-container. So try the container-fast mirror
-# first, and `--speed-limit`/`--speed-time` abandon ANY source that can't sustain ~0.8 MB/s and
-# fall through to the next - so a slow mirror never traps the build. The origin is the last resort
-# WITHOUT a speed floor, so the build still completes (slowly) if every mirror is unreachable. The
-# sha256 check guarantees the exact official file whichever source answers.
-RUN (curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://ftp.halifax.rwth-aachen.de/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
-     || curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://mirrors.ocf.berkeley.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
-     || curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://mirror.clarkson.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
-     || curl -fL --retry 3 --connect-timeout 15 "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz) \
-    && echo "${BLENDER_SHA256}  blender.tar.xz" | sha256sum -c - \
-    && tar xf blender.tar.xz && mv "blender-${BLENDER_VERSION}-linux-x64" blender-extracted && rm blender.tar.xz
-
-# MB-Lab: a parametric human/anime character generator (GPL, base mesh derived from MakeHuman CC0).
-# Provides anatomically-correct, topologized, rigged human and anime bases for the Blender engine,
-# so characters start from a professional base instead of scripted primitives. Placed as a Blender
-# addon under a dedicated scripts dir that the sandbox exposes via BLENDER_USER_SCRIPTS.
-FROM ubuntu:24.04 AS mblab
-ARG MBLAB_REF=1_8_1
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && rm -rf /var/lib/apt/lists/*
-WORKDIR /download
-RUN curl -fL --retry 3 --connect-timeout 15 "https://github.com/animate1978/MB-Lab/archive/refs/tags/${MBLAB_REF}.zip" -o mblab.zip \
-    && unzip -q mblab.zip && mkdir -p /mblab/addons && mv "MB-Lab-${MBLAB_REF}" /mblab/addons/MB_Lab && rm mblab.zip \
-    # The self-updater writes a scratch dir/json inside its own addon folder on enable, which
-    # crashes registration when that folder is a read-only sandbox mount. Redirect that scratch
-    # path to /tmp (writable) so the addon loads; the network updater is unused in the sandbox anyway.
-    && sed -i 's|os.path.dirname(__file__), self._addon + "_updater")|"/tmp", self._addon + "_updater")|' /mblab/addons/MB_Lab/addon_updater.py
-
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -63,8 +28,6 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r /tm
 ENV PATH=/opt/venv/bin:$PATH PLAYWRIGHT_BROWSERS_PATH=/opt/chromium
 RUN python -m playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY --from=freecad /download/squashfs-root /opt/cadpilot/harness/apps/freecad-extracted
-COPY --from=blender /download/blender-extracted /opt/cadpilot/harness/apps/blender-extracted
-COPY --from=mblab /mblab /opt/cadpilot/harness/apps/mblab
 COPY --from=pi /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi /pi /opt/cadpilot/harness/pi
 COPY src/cad1000 src/cad1000

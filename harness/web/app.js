@@ -218,7 +218,6 @@ function renderProject(project) {
   state.project = project;
   workspaceEditor.projectChanged(project);
   if (changedRevision) $('review-result').classList.add('hidden');
-  updatePreview(project);
   updateViewport();
   $('vp-title').textContent = project.head ? projectEngine(project) : 'Studio';
   renderTabs();
@@ -230,17 +229,14 @@ function renderProject(project) {
   $('model-measurements').textContent = g ? `${g.bounds_mm.map(v=>Number(v.toFixed(3))).join(' × ')} mm · ${g.volume_mm3.toFixed(2)} mm³ · ${g.representation || `${g.cuts?.length||0} material-removing cuts`}` : 'Describe a part to create an editable model and exports.';
   const views = $('model-views'); if (views) { views.replaceChildren();
     if (project.head && project.geometry?.views?.length) { for (const name of project.geometry.views.slice(0, 6)) {
-      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.title = `${name} view`; img.loading = 'lazy'; views.append(img); } }
-    if (project.head && 'animation.mp4' in (project.revisions.find(r=>r.id===project.head)?.sha256||{})) {
-      const vid = document.createElement('video'); vid.src = `/api/projects/${project.id}/${project.head}/animation.mp4?v=${project.head}`;
-      vid.controls = vid.loop = vid.muted = vid.autoplay = vid.playsInline = true; vid.className = 'model-animation'; vid.title = 'Recorded animation'; views.append(vid); } }
+      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.title = `${name} view`; img.loading = 'lazy'; views.append(img); } } }
   $('model-parameters').replaceChildren();
   for (const p of project.design?.parameters || []) {
     const item = document.createElement('span'); item.textContent = `${p.name}: ${p.value}`; $('model-parameters').append(item);
   }
   $('model-downloads').replaceChildren();
   const artifacts=project.revisions.find(r=>r.id===project.head)?.sha256||{};
-  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','model.bpy':'Blender','model.glb':'glTF','design-spec.json':'Requirements','parts.zip':'Part STLs','animation.mp4':'Animation'}).filter(([name])=>name in artifacts)] : []) {
+  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','design-spec.json':'Requirements','parts.zip':'Part STLs'}).filter(([name])=>name in artifacts)] : []) {
     const link = document.createElement('a'); link.textContent = `↓ ${name==='design.json'&&project.design?.format==='source-v1'?'Build info':name==='model.scad'&&project.design?.language==='freecad-python'?'OpenSCAD mesh preview':label}`;
     link.href = `/api/projects/${project.id}/${project.head}/${name}`; link.download = ''; $('model-downloads').append(link);
   }
@@ -358,141 +354,19 @@ function defaultApp() {
 async function startModeling() {
   const app = defaultApp();
   if (!app) { toast('No CAD application detected on the worker yet.', 'err'); return; }
-  state.viewMode = 'preview';
   await launch(app);
 }
 $('btn-start-modeling').onclick = startModeling;
 
-const ENGINE_LABEL = { 'blender-python': 'Blender', 'freecad-python': 'FreeCAD', 'openscad': 'OpenSCAD' };
+const ENGINE_LABEL = { 'freecad-python': 'FreeCAD', 'openscad': 'OpenSCAD' };
 function projectEngine(project) {
   return ENGINE_LABEL[project?.design?.language] || (project?.design?.format === 'source-v1' ? 'Model' : 'CAD');
 }
-function bestRenderName(project) {
-  const views = project?.geometry?.views || [];
-  for (const v of ['overview', 'render', 'three-quarter', 'threeq', 'face', 'iso', 'front']) if (views.includes(v)) return v;
-  return views[0] || null;
-}
-// Interactive 3D preview via vendored three.js (global THREE). Loads each build's model.glb
-// (Blender, materials intact) or model.stl (CAD), so you can orbit the actual model live.
-const V3 = { renderer: null, scene: null, camera: null, controls: null, model: null, raf: null, token: 0 };
-function ensure3D() {
-  if (V3.renderer) return true;
-  if (typeof THREE === 'undefined') return false;
-  const canvas = $('preview-3d');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1e6);
-  const controls = new THREE.OrbitControls(camera, canvas);
-  controls.enableDamping = true; controls.dampingFactor = 0.09; controls.enablePan = false;
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x55504a, 1.0));
-  const key = new THREE.DirectionalLight(0xffffff, 1.7); key.position.set(1, 1.5, 1.2); scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.55); fill.position.set(-1.2, 0.4, -0.8); scene.add(fill);
-  Object.assign(V3, { renderer, scene, camera, controls });
-  const loop = () => {
-    V3.raf = requestAnimationFrame(loop);
-    if (canvas.hidden) return;
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (!w || !h) return;
-    const px = renderer.getPixelRatio();
-    if (canvas.width !== Math.round(w * px) || canvas.height !== Math.round(h * px)) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-    controls.update(); renderer.render(scene, camera);
-  };
-  loop();
-  return true;
-}
-function clear3D() { if (V3.model) { V3.scene.remove(V3.model); V3.model = null; } }
-function frame3D(obj) {
-  const box = new THREE.Box3().setFromObject(obj);
-  if (box.isEmpty()) return;
-  const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z) || 10;
-  obj.position.sub(center);
-  const d = maxDim * 1.9;
-  V3.controls.target.set(0, 0, 0);
-  V3.camera.position.set(d * 0.5, d * 0.32, d * 0.95);
-  V3.camera.near = maxDim / 200; V3.camera.far = maxDim * 200; V3.camera.updateProjectionMatrix();
-  V3.controls.update();
-}
-function loadSTL3D(project, head, token, place) {
-  new THREE.STLLoader().load(`/api/projects/${project.id}/${head}/model.stl?v=${head}`, (geo) => {
-    geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xb9b3a7, metalness: 0.0, roughness: 0.72 }));
-    mesh.rotation.x = -Math.PI / 2; // STL is Z-up; three.js is Y-up
-    place(mesh);
-  }, undefined, () => {});
-}
-function load3D(project) {
-  if (!ensure3D()) return;
-  const head = project?.head;
-  const artifacts = head ? (project.revisions.find(r => r.id === head)?.sha256 || {}) : {};
-  if (!head) { clear3D(); return; }
-  const token = ++V3.token;
-  const place = (obj) => { if (token !== V3.token) return; clear3D(); V3.scene.add(obj); V3.model = obj; frame3D(obj); };
-  if ('model.glb' in artifacts) {
-    new THREE.GLTFLoader().load(`/api/projects/${project.id}/${head}/model.glb?v=${head}`,
-      (g) => place(g.scene), undefined, () => loadSTL3D(project, head, token, place));
-  } else if ('model.stl' in artifacts) {
-    loadSTL3D(project, head, token, place);
-  }
-}
-
-function updatePreview(project) {
-  const img = $('preview-img'), video = $('preview-video'), empty = $('preview-empty'), badge = $('preview-badge'), c3d = $('preview-3d'), modes = $('preview-modes');
-  const head = project?.head;
-  const artifacts = head ? (project.revisions.find(r => r.id === head)?.sha256 || {}) : {};
-  const hasAnim = 'animation.mp4' in artifacts;
-  const has3D = (typeof THREE !== 'undefined') && (('model.glb' in artifacts) || ('model.stl' in artifacts));
-  const renderView = head ? bestRenderName(project) : null;
-  if (!head || (!has3D && !renderView && !hasAnim)) {
-    c3d.hidden = true; img.hidden = true; video.classList.add('hidden'); video.removeAttribute('src'); empty.hidden = false; badge.hidden = true; modes.classList.add('hidden'); clear3D();
-    return;
-  }
-  empty.hidden = true; badge.hidden = false;
-  badge.textContent = `${projectEngine(project)} · ${head}${project.geometry?.printable === false ? ' · visual' : ''}`;
-  modes.classList.remove('hidden');
-  modes.querySelector('[data-pmode="3d"]').hidden = !has3D;
-  modes.querySelector('[data-pmode="render"]').hidden = !renderView;
-  modes.querySelector('[data-pmode="anim"]').hidden = !hasAnim;
-  let mode = state.previewMode || '3d';
-  if (mode === '3d' && !has3D) mode = renderView ? 'render' : 'anim';
-  if (mode === 'render' && !renderView) mode = has3D ? '3d' : 'anim';
-  if (mode === 'anim' && !hasAnim) mode = has3D ? '3d' : 'render';
-  state.previewMode = mode;
-  for (const b of modes.querySelectorAll('[data-pmode]')) b.classList.toggle('on', b.dataset.pmode === mode);
-  c3d.hidden = mode !== '3d';
-  img.hidden = mode !== 'render';
-  video.classList.toggle('hidden', mode !== 'anim');
-  if (mode === '3d') load3D(project); else clear3D();
-  if (mode === 'render' && renderView) img.src = `/api/projects/${project.id}/${head}/view-${renderView}.png?v=${head}`;
-  if (mode === 'anim') { const src = `/api/projects/${project.id}/${head}/animation.mp4?v=${head}`; if (video.getAttribute('src') !== src) video.src = src; } else { video.removeAttribute('src'); }
-}
-function setPreviewMode(mode) { state.previewMode = mode; if (state.project) updatePreview(state.project); }
-for (const b of document.querySelectorAll('#preview-modes [data-pmode]')) b.onclick = () => setPreviewMode(b.dataset.pmode);
-function setViewMode(mode) {
-  state.viewMode = mode;
-  for (const b of document.querySelectorAll('#view-mode [data-view]')) b.classList.toggle('on', b.dataset.view === mode);
-  updateViewport();
-}
-for (const b of document.querySelectorAll('#view-mode [data-view]')) b.onclick = () => setViewMode(b.dataset.view);
-
-// Central viewport display: launcher (no session), the live render preview, or the streamed app.
+// Central viewport display: the launcher (no session), the booting state, or the streamed CAD app.
 function updateViewport() {
   const hasSession = !!state.session;
-  // The streamed app GUI (FreeCAD) is only meaningful for a CAD engine - Blender runs headless, so
-  // its "live app" is an empty FreeCAD window. Offer the Live-app view only once a CAD build exists;
-  // otherwise the render Preview (with its interactive 3D) is the whole story.
-  const cadEngine = hasSession && !!state.project?.head && projectEngine(state.project) !== 'Blender';
-  const liveBtn = document.querySelector('#view-mode [data-view="live"]');
-  if (liveBtn) liveBtn.hidden = !cadEngine;
-  if (!cadEngine && state.viewMode === 'live') { state.viewMode = 'preview'; document.querySelectorAll('#view-mode [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === 'preview')); }
-  const live = state.viewMode === 'live';
-  $('view-mode').classList.toggle('hidden', !cadEngine);   // no toggle worth showing without a CAD app
   $('launcher').classList.toggle('hidden', hasSession);
-  if (!hasSession) { $('model-preview').classList.add('hidden'); $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
-  $('model-preview').classList.toggle('hidden', live);
-  if (!live) { $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
+  if (!hasSession) { $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
   const ready = state.firstFrame;
   $('screen').classList.toggle('hidden', !ready);
   $('booting').classList.toggle('hidden', ready);
@@ -528,7 +402,7 @@ function detachUI() {
   $("screen").classList.add("hidden");
   $("launcher").classList.remove("hidden");
   $("booting").classList.add("hidden");
-  state.viewMode = 'preview'; updateViewport();
+  updateViewport();
   $("vp-title").textContent = "Your workspace";
   $("vp-meta").textContent = "";
   for (const id of ["btn-shot", "btn-full", "btn-close-session"]) $(id).classList.add("hidden");
@@ -586,7 +460,6 @@ function attach(session) {
   state.viewWS?.close?.(); state.agentWS?.close?.();
   const generation = ++state.generation;
   state.session = session;
-  state.viewMode = state.viewMode || 'preview';
   renderEndpointStatus();
   state.project = null; loadProject(); $('engine-select').value = session.engine || 'visual';
   state.freshTask = state.canContinue = false;
@@ -624,7 +497,7 @@ function attach(session) {
       if (!state.firstFrame) {
         state.firstFrame = true;
         updateViewport();
-        $("focus-hint").classList.toggle("hidden", state.locked || state.viewMode !== 'live');
+        $("focus-hint").classList.toggle("hidden", state.locked || !state.firstFrame);
       }
     } catch { /* A dropped JPEG is replaced by the next frame. */ }
     finally { if (generation === state.generation) { state.decoding = false; if (state.latestFrame) render(); } }

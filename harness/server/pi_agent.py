@@ -251,8 +251,7 @@ class PiBridge:
         self.stderr = asyncio.create_task(self._drain_stderr())
         engine_pref = (self.runner.config.get('agent', {}) or {}).get('preferred_engine', 'auto') if not research else 'auto'
         engine_hint = {'freecad': '\nThe user prefers model.py (FreeCAD) when the task suits it; still use whatever engine the task genuinely needs.\n',
-                       'openscad': '\nThe user prefers model.scad (OpenSCAD) when the task suits it; still use whatever engine the task genuinely needs.\n',
-                       'blender': '\nThe user prefers model.bpy (Blender) when the task suits it; still use whatever engine the task genuinely needs.\n'}.get(engine_pref, '')
+                       'openscad': '\nThe user prefers model.scad (OpenSCAD) when the task suits it; still use whatever engine the task genuinely needs.\n'}.get(engine_pref, '')
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
             tools=definitions, activeTools=self.active_tools, workspace=not research,

@@ -63,17 +63,14 @@ You have Pi's read/write/edit/bash tools in an isolated persistent CAD workspace
 without network: fetch pages and PDFs with research, and STEP/STL/DXF/SVG files
 with import_reference (they appear under /work/references/ for FreeCAD import).
 Choose the engine the job wants and drive it with cad_build: model.py (FreeCAD Python) for
-precise, parametric, mechanical parts; model.bpy (Blender) for organic, sculpted, character
-and scene work with materials, lighting and animation; model.scad (OpenSCAD) for simple
-constructive solids. Read the matching skills/ playbook first; skills are starting points to
-adapt, not rails, and the construction method (parametric solids, box-modelling, primitive-
-plus-remesh, a drawn profile) is a choice the subject makes - do not force every subject into
-one. Use the full CAD APIs, functions, sketches and patterns as needed.
+precise, parametric, mechanical parts; model.scad (OpenSCAD) for simple constructive solids.
+Read the matching skills/ playbook first; skills are starting points to adapt, not rails, and
+the construction method (parametric solids, a drawn profile, constructive booleans) is a choice
+the subject makes - do not force every subject into one. Use the full CAD APIs, functions,
+sketches and patterns as needed.
 BUILD EARLY AND OFTEN: block out the rough form, cad_build, LOOK at it, then refine in small
-cycles - a rough thing you can see and correct beats a perfect script you never verified. In
-Blender, iterate with `draft = True` (a fast low-sample preview) and drop it for the final
-beauty pass; set `animate = True` only when you actually want the recorded MP4 (it is the
-slowest step). Batch related source edits before a build. Tool results show actual saved geometry.
+cycles - a rough thing you can see and correct beats a perfect script you never verified.
+Batch related source edits before a build. Tool results show actual saved geometry.
 The convenient typed CAD tools remain usable on older operation-based projects;
 they cannot modify a source build. Their expression/bounding-box restrictions do
 not apply to Python/OpenSCAD source. Read each tool's argument description.
@@ -121,9 +118,8 @@ is for things you build.
 Before finishing, look at the rendered views from the angles that EXPOSE flaws - the back, a
 profile, a straight-on face - not just one flattering hero shot, and check FORM against the
 request, not only dimensions: does the shape actually do the job (a duct has a through-cavity,
-a mount cradles or bolts to its part, an enclosure encloses; a character reads in silhouette,
-its proportion fits, its signature features read with relief, its materials and lighting make
-it legible)? A valid solid with the right bounding box can still be the wrong or an ugly object.
+a mount cradles or bolts to its part, an enclosure encloses)? A valid solid with the right
+bounding box can still be the wrong or an ugly object.
 Grade the result honestly, name the single weakest thing, fix its CAUSE and rebuild - two honest
 iterations beat ten blind nudges. Run review for an independent check on any non-trivial part and
 address what it raises; do not mark work done on your own say-so alone.
@@ -229,24 +225,19 @@ async def dispatch(bridge, name, args):
     from .agent import geometry_summary
     result = {'ok': True, 'head': saved['head'], 'geometry': geometry_summary(saved['geometry']),
               'files': work.describe()['files'], 'specification': work.spec_context(), 'warning': warning}
-    # Optional auto-review (off by default; a settings toggle). After a FINAL build, run the same
+    # Optional auto-review (off by default; a settings toggle). After a build, run the same
     # advisory reviewer the Review button uses and surface it in the result and to the UI, so the
-    # taste check applies without the model having to ask. Skip draft builds - they exist for fast
-    # iteration, not judging - and never let a review failure disturb the build.
+    # taste check applies without the model having to ask - never letting a review failure disturb
+    # the build.
     if runner.config.get('agent', {}).get('auto_review'):
+        from .review import review_revision
         try:
-            bpy_source = project.file(saved['head'], 'model.bpy').read_text()
-        except (OSError, ValueError):
-            bpy_source = ''
-        if not re.search(r'^\s*draft\s*=\s*True', bpy_source, re.M):
-            from .review import review_revision
-            try:
-                review = await review_revision(project, saved['head'], runner.config)
-                runner.emit({'t': 'native_review', **review, 'head': saved['head'],
-                             'verification_scope': 'advisory model review, not mechanical fit certification'})
-                result['review'] = review
-            except Exception as error:  # noqa: BLE001 - auto-review is best-effort; the build stands
-                runner.emit({'t': 'note', 'message': f'Auto-review unavailable: {str(error)[:160]}'})
+            review = await review_revision(project, saved['head'], runner.config)
+            runner.emit({'t': 'native_review', **review, 'head': saved['head'],
+                         'verification_scope': 'advisory model review, not mechanical fit certification'})
+            result['review'] = review
+        except Exception as error:  # noqa: BLE001 - auto-review is best-effort; the build stands
+            runner.emit({'t': 'note', 'message': f'Auto-review unavailable: {str(error)[:160]}'})
     return work.context_result('build-result', result)
 
 

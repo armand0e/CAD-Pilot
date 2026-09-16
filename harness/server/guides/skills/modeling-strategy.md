@@ -38,13 +38,9 @@ boss_r, boss_h = 4.0, H - wall
 - Transitions and tapers (ducts, round-to-rect, bells): loft between sections.
 - Tubes and rails along a curve: pipe / sweep.
 - Genuinely blocky solids: primitives (box, cylinder, sphere, cone, torus) + booleans.
-- Organic, sculpted or character forms (people, animals, mascots, creatures): model in
-  Blender (model.bpy), and there too CHOOSE the method rather than defaulting: primitive-
-  plus-remesh melds rounded masses into one soft cohesive form (great for a cute blob,
-  wrong for anything that needs crisp edges); box-modelling with bmesh gives controlled
-  topology and defined planes/edges (right for stylised or hard-edged characters); a
-  modifier stack (mirror, subsurf, solidify) suits symmetric and shell forms. See
-  modeling-techniques.md. Do not force every organic subject into the same rounded blob.
+- Organic or rounded forms (people, animals, mascots, creatures): compose smooth
+  primitives (spheres, capsules, lofted masses) into the right proportions and fuse
+  them; keep the silhouette readable rather than chasing fine detail.
 
 Mixing is normal: an extruded body with a revolved knob fused on. Choose per feature,
 not per model.

@@ -99,7 +99,7 @@ def validate(data, previous):
     if effort == 'high' and 'high' not in model_efforts(active_model['model']):
         effort = 'xhigh'
     engine = str(data.get('preferred_engine', 'auto'))
-    if engine not in ('auto', 'freecad', 'openscad', 'blender'):
+    if engine not in ('auto', 'freecad', 'openscad'):
         engine = 'auto'
     return {'version': 1, 'web_search': bool(data.get('web_search', True)), 'auto_review': bool(data.get('auto_review', False)),
             'preferred_engine': engine, 'reasoning_effort': effort, 'active_model': active, 'models': models}

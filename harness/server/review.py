@@ -4,7 +4,7 @@ The agent has an on-demand `review` tool, but the model rarely calls it - so the
 never applies. This runs the SAME reviewer (its prompt and schema) against a saved revision on
 demand, from the user's Review button or, when enabled, automatically after a build. It rebuilds
 the reviewer's context from the committed revision (geometry, spec, rendered views) instead of a
-live agent turn, so it works for any revision, native or source (model.bpy / model.scad)."""
+live agent turn, so it works for any revision, native or source (model.py / model.scad)."""
 import base64
 import json
 
@@ -29,7 +29,7 @@ def _view_parts(project, head, limit=4):
     """Rendered views of the revision as image parts, so the reviewer judges form, not only bounds."""
     entry = next((r for r in project.read().get('revisions', []) if r['id'] == head), {})
     names = [n[5:-4] for n in sorted(entry.get('sha256', {})) if n.startswith('view-') and n.endswith('.png')]
-    # Prefer the lit beauty views (render + the model's own angles) over the grey ortho ones.
+    # Prefer the model's own named angles if present, otherwise the standard ortho views.
     ordered = [v for v in ('render', 'face', 'three-quarter', 'threeq', 'front', 'iso', 'right', 'top') if v in names]
     ordered += [v for v in names if v not in ordered]
     parts = []

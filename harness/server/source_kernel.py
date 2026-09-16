@@ -33,110 +33,33 @@ def mesh_for(shape):
 
 
 def detail(shape):
-    try:
-        b = shape.optimalBoundingBox(False, False)
-    except Exception:  # a non-solid visual mesh may not support the optimal box
-        b = shape.BoundBox
+    b = shape.optimalBoundingBox(False, False)
     return {**shape_summary(shape), 'bounds_mm': [b.XLength, b.YLength, b.ZLength],
             'min_mm': [b.XMin,b.YMin,b.ZMin], 'max_mm': [b.XMax,b.YMax,b.ZMax],
             'area_mm2': shape.Area, 'face_count': len(shape.Faces), 'edge_count': len(shape.Edges)}
 
 
-def build_visual_mesh(mesh):
-    """Fast path for a dense organic/character mesh (e.g. an MB-Lab figure): keep it as a mesh
-    instead of the slow, enormous BREP conversion. Such a result is visual anyway (not a printable
-    analytic solid), so this produces the required artifacts from the mesh directly - seconds, not
-    minutes, and a small FCStd instead of one that blows the sandbox file limit."""
-    import shutil
-    shutil.copyfile('source.stl', 'model.stl')
-    box = mesh.BoundBox
-    bounds = [box.XLength, box.YLength, box.ZLength]
-    lo, hi = [box.XMin, box.YMin, box.ZMin], [box.XMax, box.YMax, box.ZMax]
-    fin = lambda x: x if isinstance(x, (int, float)) and math.isfinite(x) else 0.0
-    volume, area = fin(mesh.Volume), fin(mesh.Area)
-    doc = App.newDocument('CADPilot')
-    feature = doc.addObject('Mesh::Feature', 'CADPilotResult')
-    feature.Mesh = mesh
-    doc.recompute()
-    doc.saveAs('/work/model.FCStd')
-    # model.step must exist; a visual mesh has no meaningful analytic solid, so write a lightweight
-    # bounding-box STEP placeholder (the real deliverables are the STL and glTF).
-    placeholder = Part.makeBox(max(bounds[0], 1e-3), max(bounds[1], 1e-3), max(bounds[2], 1e-3), App.Vector(*lo))
-    Part.export([placeholder], '/work/model.step')
-    with zipfile.ZipFile('parts.zip', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.write('model.stl', 'CADPilotResult.stl')
-    try:
-        saved_views = render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
-                                                         if Path('build-views.json').is_file() else None))
-    except Exception:  # noqa: BLE001 - a dense mesh can defeat the ortho renderer; the Blender beauty views remain
-        saved_views = []
-    if Path('view-render.png').is_file():
-        saved_views.append('render')
-    for extra in sorted(Path('/work').glob('view-*.png')):  # lit Blender beauty views (render + the model's angles)
-        name = extra.stem[len('view-'):]
-        if name and name not in saved_views:
-            saved_views.append(name)
-    audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh; printability not verified.'}
-    report = {'valid_geometry': True, 'valid_solid': False, 'solid_count': 0, 'printable': False,
-              'min_mm': lo, 'max_mm': hi, 'volume_mm3': volume, 'bounds_mm': bounds,
-              'area_mm2': area, 'face_count': mesh.CountFacets, 'edge_count': 0,
-              'parts': [{'feature': 'CADPilotResult', 'solid_count': 0, 'bounds_mm': bounds,
-                         'min_mm': lo, 'max_mm': hi, 'volume_mm3': volume, 'area_mm2': area,
-                         'face_count': mesh.CountFacets, 'edge_count': 0, 'stl_audit': audit}],
-              'result_object': 'CADPilotResult', 'faces': [], 'cuts': [], 'references': [],
-              'requirements_verified': False, 'representation': 'visual mesh (not a verified printable solid)',
-              'views': saved_views, 'stl_audit': audit,
-              'notice': ('Visual character/organic result: rendered (and animated) from a dense mesh and kept '
-                         'as a mesh rather than a printable solid - converting it to a BREP would be slow and '
-                         'huge. To print, reduce it to a watertight solid.')}
-    Path('geometry.json').write_text(json.dumps(report, allow_nan=False))
-
-
 def build():
     design = json.loads(Path('design.json').read_text())
     shapes = []
-    visual = False
-    if design['language'] in ('openscad', 'blender-python'):
+    if design['language'] == 'openscad':
         mesh = Mesh.Mesh('source.stl')
-        # A dense Blender mesh (character/organic sculpt - a printable part would be built in FreeCAD,
-        # and MB-Lab characters come out subdivided to hundreds of thousands of facets) is a visual
-        # result, not a printable analytic solid. Keep it as a mesh: no BREP, so the 400k solid-path
-        # limit does not apply - just guard against a truly pathological sculpt. This must come BEFORE
-        # the BREP facet check below. Simple watertight Blender solids under 20k stay printable.
-        if design['language'] == 'blender-python' and mesh.CountFacets > 20000:
-            if mesh.CountFacets > 3000000:
-                raise ValueError('Mesh exceeds 3000000 facets; decimate the sculpt before export')
-            return build_visual_mesh(mesh)
         if mesh.CountFacets > 400000:
-            raise ValueError('Mesh exceeds 400000 facets; reduce tessellation, subdivision or decimate before export')
+            raise ValueError('OpenSCAD mesh exceeds 400000 facets; reduce tessellation')
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh.Topology, 1e-6)
-        try:
-            # Shells can include enclosed voids. Solid construction preserves their orientation.
-            outer, inner = [], []
-            for shell in shape.Shells:
-                solid = Part.makeSolid(shell)
-                (outer if solid.Volume > 0 else inner).append(solid)
-            built = []
-            for index, solid in enumerate(outer):
-                for cavity in inner:
-                    inverse = cavity.copy()
-                    inverse.reverse()
-                    if solid.isInside(inverse.CenterOfMass, 1e-6, True):
-                        solid = solid.cut(inverse)
-                built.append((f'Part{index + 1}', solid))
-            if not built:
-                raise ValueError('no closed solids')
-            for _, candidate in built:
-                valid(candidate)
-            shapes = built
-        except Exception as error:  # noqa: BLE001
-            # A Blender mesh that is not watertight still renders and animates: keep it as a
-            # visual (non-printable) result instead of failing. OpenSCAD output stays strict.
-            if design['language'] != 'blender-python':
-                raise ValueError('Output must contain valid, positive-volume closed solids') from error
-            visual = True
-            shapes = [('Mesh', shape)]
+        # Shells can include enclosed voids. Solid construction preserves their orientation.
+        outer, inner = [], []
+        for shell in shape.Shells:
+            solid = Part.makeSolid(shell)
+            (outer if solid.Volume > 0 else inner).append(solid)
+        for index, solid in enumerate(outer):
+            for cavity in inner:
+                inverse = cavity.copy()
+                inverse.reverse()
+                if solid.isInside(inverse.CenterOfMass, 1e-6, True):
+                    solid = solid.cut(inverse)
+            shapes.append((f'Part{index+1}', solid))
     else:
         for row in json.loads(Path('build-parts.json').read_text()):
             shape = Part.Shape()
@@ -148,25 +71,13 @@ def build():
     objects, reports = [], []
     with zipfile.ZipFile('parts.zip', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, shape in shapes:
-            if not visual:
-                valid(shape)
+            valid(shape)
             obj = doc.addObject('PartDesign::Feature', name)
             obj.Shape = shape
             objects.append(obj)
             part_mesh = mesh_for(shape)
             part_mesh.write('part.stl')
-            if visual:
-                audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh, not a verified printable solid.'}
-            else:
-                try:
-                    audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
-                except ValueError:
-                    # A valid BREP solid can still mesh non-manifold (thin/overlapping organic parts).
-                    # For Blender, keep it as a visual result rather than failing; others stay strict.
-                    if design['language'] != 'blender-python':
-                        raise
-                    visual = True
-                    audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh, not a verified printable solid.'}
+            audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
             archive.write('part.stl', obj.Name + '.stl')
             reports.append({'feature': obj.Name, **detail(shape), 'stl_audit': audit})
     result = doc.addObject('PartDesign::Feature', 'CADPilotResult')
@@ -187,32 +98,17 @@ def build():
     Part.export([result], '/work/model.step')
     mesh = mesh_for(shape)
     mesh.write('model.stl')
-    saved_views = render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
-                                                     if Path('build-views.json').is_file() else None))
-    if Path('view-render.png').is_file():
-        saved_views.append('render')  # a Blender Cycles beauty view produced during the source build
-    for extra in sorted(Path('/work').glob('view-*.png')):  # lit beauty views from the model's own `views` angles
-        name = extra.stem[len('view-'):]
-        if name and name not in saved_views:
-            saved_views.append(name)
-    report = {'valid_geometry': True, 'valid_solid': (not visual) and len(shape.Solids) == 1, **detail(shape),
+    report = {'valid_geometry': True, 'valid_solid': len(shape.Solids) == 1, **detail(shape),
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,
-              'representation': ('visual mesh (not a verified printable solid)' if visual else
-                                 'faceted mesh converted to BREP' if design['language'] in ('openscad', 'blender-python') else 'analytic BREP'),
-              'views': saved_views}
-    if visual:
-        report['printable'] = False
-        report['notice'] = ('Visual Blender result: rendered and animated, but the mesh is not a watertight solid, '
-                            'so it is not verified for printing. Make it watertight (SOLIDIFY, close holes, recalc '
-                            'normals) to print.')
-        report['stl_audit'] = {'closed_oriented_edges': False, 'notice': 'Visual mesh; printability not verified.'}
-    else:
-        try:
-            report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
-        except ValueError as error:
-            report['stl_audit'] = {'closed_oriented_edges': False, 'error': str(error),
-                                   'notice': 'Assembly mesh may contain contacting/overlapping parts. Individually audited STL files are in parts.zip.'}
+              'representation': 'faceted mesh converted to BREP' if design['language'] == 'openscad' else 'analytic BREP',
+              'views': render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
+                                                          if Path('build-views.json').is_file() else None))}
+    try:
+        report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
+    except ValueError as error:
+        report['stl_audit'] = {'closed_oriented_edges': False, 'error': str(error),
+                               'notice': 'Assembly mesh may contain contacting/overlapping parts. Individually audited STL files are in parts.zip.'}
     Path('geometry.json').write_text(json.dumps(report, allow_nan=False))
 
 

@@ -57,7 +57,7 @@ def reference_name(requested_url, final_url, content):
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('design.json', 'geometry.json', 'model.FCStd', 'model.scad', 'model.step', 'model.stl')
-OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'model.bpy', 'design-spec.json', 'parts.zip', 'animation.mp4', 'model.glb')
+OPTIONAL_FILES = ('research.json', 'workspace.json', 'source.zip', 'model.py', 'design-spec.json', 'parts.zip')
 # Saved render views: the four defaults plus any the model chose (view-<name>.png).
 VIEW_RE = re.compile(r'view-[a-z0-9_-]{1,24}\.png')
 REFERENCE_DIR = 'references'

@@ -7,7 +7,7 @@ like what was asked. Most bad results pass the audit. You are the check on meani
 Do not trust one flattering hero shot - it is how a blank back, an unlit side or an off
 profile hides. Look from the angles that would EXPOSE a flaw, then grade the result
 honestly against the request on its real axes (silhouette, proportion, whether the
-signature features read, materials, lighting), name the single weakest one, and fix its
+signature features read), name the single weakest one, and fix its
 cause before you call it done. The independent `review` sees these same views, so aiming
 them at the weak spots - not away from them - is how you make its check, and yours, honest.
 
