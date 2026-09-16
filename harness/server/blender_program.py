@@ -30,14 +30,34 @@ try:
 except Exception as error:  # noqa: BLE001 - characters are optional; never block a build
     print('MBLAB_UNAVAILABLE %s' % error)
 
-def mblab_base(character='f_an01', finalize=True):
+def mblab_base(character='f_an01', finalize=True, shape=None):
     """Generate an MB-Lab character base and return its body mesh. One foolproof call instead of the
     raw mbast API. character: anime female f_an01/f_an02/f_an03, anime male m_an01..; realistic
     female f_ca01 (caucasian) f_as01 (asian) f_af01 (african), male m_ca01..  finalize adds the rig.
-    MB-Lab is already enabled - do NOT enable it yourself."""
+    MB-Lab is already enabled - do NOT enable it yourself.
+
+    shape: optional dict of MB-Lab morph parameters, applied BEFORE finalising, to change the body
+    ANATOMICALLY (the right way to make a fuller/leaner/curvier figure - never push vertices by hand).
+    Values are 0..1 around a 0.5 default. Useful keys:
+      Torso_BreastMass, Torso_BreastTone, Torso_BreastPosZ  (bust size / firmness / height)
+      Pelvis_GluteusMass, Pelvis_GluteusTone                (hips / seat)
+      Torso_Mass, Torso_Tone, Legs_UpperlegsMass, Shoulders_Size, Neck_Length, Waist_Size ...
+    e.g. mblab_base('f_an01', shape={'Torso_BreastMass': 0.8, 'Pelvis_GluteusMass': 0.62})."""
     scene = bpy.context.scene
     scene.mblab_character_name = character
     bpy.ops.mbast.init_character()
+    if shape:
+        try:  # apply morphs through MB-Lab's engine, then rebuild the mesh (an obj-property write alone does nothing)
+            import MB_Lab
+            humanoid = MB_Lab.mblab_humanoid
+            for key, value in shape.items():
+                if key in humanoid.character_data:
+                    humanoid.character_data[key] = float(value)
+                else:
+                    print('MBLAB_SHAPE_UNKNOWN %s' % key)
+            humanoid.update_character(mode='update_all')
+        except Exception as error:  # noqa: BLE001 - shaping is optional; never block a build
+            print('MBLAB_SHAPE_SKIPPED %s' % error)
     if finalize:
         bpy.ops.mbast.finalize_character()
     meshes = [o for o in scene.objects if o.type == 'MESH' and (o.name.startswith('MBlab') or character in o.name)]
@@ -172,6 +192,31 @@ try:
     print('BLENDER_RENDER_OK')
 except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a render is a bonus
     print('BLENDER_RENDER_SKIPPED %s' % error)
+
+# Guaranteed overview: one auto-framed hero shot of the WHOLE model from a dedicated camera, reusing
+# the studio lights/materials above. The model's own render.png keeps whatever camera it chose, but a
+# mis-aimed or wrong-scale camera makes that shot empty or a sliver; this pass ALWAYS frames the
+# entire object, so every build - any kind of model - has one reliable, correctly-framed render.
+# Additive and best-effort; it never replaces the model's render and never blocks the build.
+if render_ok:
+    try:
+        scene = bpy.context.scene
+        ov_data = bpy.data.cameras.new('OverviewCam')
+        ov_data.lens = 50
+        overview_cam = bpy.data.objects.new('OverviewCam', ov_data)
+        scene.collection.objects.link(overview_cam)
+        reach = span * 2.1
+        overview_cam.location = center + mathutils.Vector((reach * 0.7, -reach, reach * 0.5))
+        overview_cam.rotation_euler = (center - overview_cam.location).to_track_quat('-Z', 'Y').to_euler()
+        scene.camera = overview_cam
+        scene.render.filepath = os.path.join(out_dir, 'view-overview.png')
+        bpy.ops.render.render(write_still=True)
+        print('BLENDER_OVERVIEW_OK')
+    except Exception as error:  # noqa: BLE001 - a bonus view; never block a build
+        print('BLENDER_OVERVIEW_SKIPPED %s' % error)
+    finally:
+        if beauty_cam is not None:
+            bpy.context.scene.camera = beauty_cam
 
 # Saved views: re-render the model's own `views` directions in the same lit studio, so it can
 # check its finished, textured, lit work from the angles it chose - not just the grey mesh. Each

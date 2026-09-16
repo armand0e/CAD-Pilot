@@ -369,7 +369,7 @@ function projectEngine(project) {
 }
 function bestRenderName(project) {
   const views = project?.geometry?.views || [];
-  for (const v of ['render', 'three-quarter', 'threeq', 'face', 'iso', 'front']) if (views.includes(v)) return v;
+  for (const v of ['overview', 'render', 'three-quarter', 'threeq', 'face', 'iso', 'front']) if (views.includes(v)) return v;
   return views[0] || null;
 }
 // Interactive 3D preview via vendored three.js (global THREE). Loads each build's model.glb
