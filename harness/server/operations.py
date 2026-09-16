@@ -1030,6 +1030,17 @@ status=revise when a requirement is wrong or omitted. status=needs_input only wh
 measurement or user decision blocks verification and the conversation has not already accepted
 an assumption for it. Accepted assumptions are disclosed limitations, not blockers. This is a
 model review, not mechanical fit certification.
+ARTISTIC SUBJECTS (a character, figure, animal, mascot, toy, ornament, sculpt or scene): here
+the rendered views are the primary evidence and craft quality IS a requirement, so judge, from
+the views, not just that the parts are present but that they are executed well: silhouette
+(recognisable as the requested thing in outline alone); proportion (fits the subject and any
+stated style); whether the signature features read at real size and with relief (eyes with a
+real iris and a catchlight, not blank discs; a face that reads as a face); whether material
+zones and colours separate the parts; and whether lighting and framing make it legible (not
+crushed dark or muddy, not one flattering angle hiding a blank or unlit back). status=revise for
+work that is merely recognisable but poorly executed - blank or dead eyes, a dark or muddy
+render, off proportion, features that do not read, an unfinished back - each issue naming the
+weakest axis and the fix. Hold artistic work to what a person would call good, not just present.
 """
 
 

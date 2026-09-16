@@ -70,6 +70,12 @@ except Exception as error:  # noqa: BLE001 - the STL is the deliverable; glTF is
 # STL as render.png. The mesh is already exported, so the camera/light/ground added here
 # never reach the printable output. Best-effort: a render failure must not fail the build.
 out_dir = os.path.dirname(out_stl)
+# Render tiers, so iterating stays fast. A `draft` build is a quick, low-sample single still
+# for checking form and proportion; without it the build does the full beauty pass (hero still
+# plus the saved views). `animate` opts in to the MP4 - off by default, because it is the
+# slowest step and most builds are glances at the form, not the final recording.
+draft = bool(user_ns.get('draft'))
+animate = bool(user_ns.get('animate'))
 render_ok = False
 center = mathutils.Vector((0.0, 0.0, 0.0))
 span = 10.0
@@ -132,9 +138,9 @@ try:
         pass
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
-    scene.cycles.samples = 48
-    scene.cycles.time_limit = 45  # seconds - never block a build on rendering
-    scene.render.resolution_x = scene.render.resolution_y = 640
+    scene.cycles.samples = 16 if draft else 48
+    scene.cycles.time_limit = 12 if draft else 45  # seconds - never block a build on rendering
+    scene.render.resolution_x = scene.render.resolution_y = 512 if draft else 640
     scene.render.image_settings.file_format = 'PNG'
     scene.render.filepath = os.path.join(out_dir, 'render.png')
     bpy.ops.render.render(write_still=True)
@@ -148,7 +154,7 @@ except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a rende
 # is a quick pass (fewer samples, tight time cap) written as view-<name>.png beside the STL.
 try:
     user_views = user_ns.get('views')
-    if render_ok and isinstance(user_views, dict) and user_views:
+    if render_ok and not draft and isinstance(user_views, dict) and user_views:
         scene = bpy.context.scene
         view_data = bpy.data.cameras.new('ViewCam')
         view_data.lens = 55
@@ -182,7 +188,7 @@ except Exception as error:  # noqa: BLE001
 # stalls a build; the printed mesh and the still render are unaffected.
 try:
     scene = bpy.context.scene
-    if scene.camera is not None and scene.frame_end > scene.frame_start:
+    if scene.camera is not None and animate and not draft and scene.frame_end > scene.frame_start:
         frames = min(scene.frame_end - scene.frame_start + 1, 120)
         scene.frame_end = scene.frame_start + frames - 1
         scene.cycles.samples = 16

@@ -4,6 +4,13 @@ A build that passes the geometry audit is not the same as a correct part. The au
 proves the mesh is closed and manifold; it says nothing about whether the thing looks
 like what was asked. Most bad results pass the audit. You are the check on meaning.
 
+Do not trust one flattering hero shot - it is how a blank back, an unlit side or an off
+profile hides. Look from the angles that would EXPOSE a flaw, then grade the result
+honestly against the request on its real axes (silhouette, proportion, whether the
+signature features read, materials, lighting), name the single weakest one, and fix its
+cause before you call it done. The independent `review` sees these same views, so aiming
+them at the weak spots - not away from them - is how you make its check, and yours, honest.
+
 ## Aim the views at your object's own weak spots
 
 The four default saved views (iso/top/front/right) are generic and often hide the

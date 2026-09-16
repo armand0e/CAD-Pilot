@@ -7,6 +7,9 @@ model ends up wrong. BUILD AFTER EACH STAGE. Do not write the whole model in one
 the end - cad_build the blockout, look at the render, fix the proportions, then add the
 next stage and build again. A rough model you can see and correct beats a perfect script
 you never verified. Three or four small builds get a far better result than one big one.
+Build these iteration passes with `draft = True` (blender-modeling.md) so each look takes
+seconds, not minutes; drop it for the final beauty pass. The more cycles you get, the
+better the result - speed of iteration is the whole game.
 
 Follow the order. This skill is the process; the depth for each stage is in its own skill:
 modeling-techniques.md (how to build the mesh), texturing-and-materials.md (materials and

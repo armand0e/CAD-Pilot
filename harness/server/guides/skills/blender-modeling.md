@@ -26,6 +26,19 @@ grade). This skill is the tooling those stages use.
 - Keep the mesh under 400000 triangles. High subdivision explodes triangle count -
   levels 2-3 is plenty; decimate a dense sculpt before finishing.
 
+## Iterate fast: draft, then finalise
+
+Every build renders, and a full Cycles render is the slow part - so do not pay for it on
+every glance. While you are still shaping the form, set `draft = True` at the top of
+model.bpy: the build then does one quick low-sample still (and the fast grey ortho views),
+skipping the multi-angle beauty pass. That turns a look into ~20 seconds instead of minutes,
+so you get many more see-and-fix cycles - which is what actually makes the model good. Drop
+`draft` (or set it False) for the final build to get the full, clean beauty render and your
+saved views. Recording is opt-in and separate: the MP4 renders ONLY when you set
+`animate = True` (with a keyframed timeline), because it is the single slowest step - leave
+it off until you specifically want the animation, usually on the final. Rule of thumb: draft
+while you iterate, full on the pass you would show someone, animate only when asked.
+
 ## Building blocks
 
 ```python
