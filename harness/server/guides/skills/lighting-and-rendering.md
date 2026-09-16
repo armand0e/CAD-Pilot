@@ -43,17 +43,31 @@ light, not moody contrast. Aim for a render where every part of the form is clea
 
 ## Environment and mood
 
-Set the world colour and strength for ambient light and background tone. A dim cool world
-with bright key gives drama; an even brighter world gives a clean product look. Warm key
-plus cool fill reads natural.
+The world is your ambient fill AND your background tone, and it is the setting that most
+often decides whether a render reads cheerful or gloomy. A dark world (low colour, e.g.
+0.05) gives a moody, dramatic look with a black-ish background - right for a villain or a
+metal part, WRONG for a cute toy or a clean product, which come out dim and grim. Default
+to a BRIGHT world for anything cheerful: a light warm-grey at strength ~1.0-1.5 lifts the
+whole subject softly and gives a clean pale backdrop the subject pops against. Then the
+key/fill/rim shape the form on top of that base.
 
 ```python
 if sc.world is None: sc.world = bpy.data.worlds.new('W')
 sc.world.use_nodes = True
 bg = sc.world.node_tree.nodes['Background']
-bg.inputs['Color'].default_value = (0.05, 0.06, 0.08, 1); bg.inputs['Strength'].default_value = 0.3
-sc.view_settings.view_transform = 'AgX'   # filmic tone mapping - realistic highlights, no blowout
+# bright, clean backdrop for a cute/product subject (go dark only for a deliberately moody one):
+bg.inputs['Color'].default_value = (0.8, 0.82, 0.85, 1); bg.inputs['Strength'].default_value = 1.2
 ```
+
+## Tone mapping - why your render may look dark
+
+Blender's default view transform is AgX, which is filmic: it mutes and darkens a simple
+studio scene into a muddy, greyed look even when your lights are fine. The build renders
+with Khronos PBR Neutral instead - accurate, bright colour for an asset/figurine preview -
+so you normally do not need to touch this. Only set view_transform yourself if you
+deliberately want a cinematic AgX look (`sc.view_settings.view_transform = 'AgX'`), and know
+it will need noticeably stronger lights to read bright. For a cheerful cartoon or a clean
+product shot, leave it on the PBR Neutral default and light generously.
 
 ## Camera - lens, angle, focus
 
@@ -90,7 +104,8 @@ or an unlit back. The review reads these too, so aim them honestly.
 ## Checklist
 
 - Key/fill/rim set, AREA lights sized to the subject, each aimed at it.
-- World tone and strength chosen for the intended mood; AgX view transform on.
+- World tone and strength chosen for the intended mood; render checked for brightness (the
+  build tone-maps with PBR Neutral, so a dark render means light it more, not a transform fix).
 - Camera at a flattering angle, 50-85 mm, framed with a little air, DoF if it suits.
 - A focal feature placed with composition in mind; ground/contact shadow present.
 - Saved views aimed at the features and the weak spots.

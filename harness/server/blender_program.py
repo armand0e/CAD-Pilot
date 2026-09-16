@@ -122,6 +122,14 @@ try:
         if background is not None:
             background.inputs['Color'].default_value = (0.05, 0.05, 0.06, 1.0)
             background.inputs['Strength'].default_value = 0.5
+    # Blender defaults to the AgX view transform, which is filmic and mutes/darkens a simple
+    # studio scene into a muddy look. Khronos PBR Neutral is built for accurate, bright asset
+    # previews, so use it - but respect a model that deliberately chose a different transform.
+    try:
+        if scene.view_settings.view_transform == 'AgX':
+            scene.view_settings.view_transform = 'Khronos PBR Neutral'
+    except (TypeError, AttributeError):
+        pass
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
     scene.cycles.samples = 48
