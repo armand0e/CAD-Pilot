@@ -20,8 +20,17 @@ ARG BLENDER_VERSION=4.2.9
 ARG BLENDER_SHA256=dfbc127a7d28f9c2175b23bf9d6701b2855f31eedfb391f9a6e60adb24572846
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils && rm -rf /var/lib/apt/lists/*
 WORKDIR /download
-RUN (curl -fL --retry 3 "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
-     || curl -fL --retry 3 "https://mirror.clarkson.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz) \
+# download.blender.org (the origin) is heavily rate-limited to near-zero, and inside Docker's NAT
+# network some mirrors collapse too (Clarkson: 17 MB/s on the host but 0.5 MB/s in a container),
+# while ftp.halifax.rwth-aachen.de holds ~10 MB/s in-container. So try the container-fast mirror
+# first, and `--speed-limit`/`--speed-time` abandon ANY source that can't sustain ~0.8 MB/s and
+# fall through to the next - so a slow mirror never traps the build. The origin is the last resort
+# WITHOUT a speed floor, so the build still completes (slowly) if every mirror is unreachable. The
+# sha256 check guarantees the exact official file whichever source answers.
+RUN (curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://ftp.halifax.rwth-aachen.de/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
+     || curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://mirrors.ocf.berkeley.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
+     || curl -fL --connect-timeout 10 --speed-limit 800000 --speed-time 20 "https://mirror.clarkson.edu/blender/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz \
+     || curl -fL --retry 3 --connect-timeout 15 "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" -o blender.tar.xz) \
     && echo "${BLENDER_SHA256}  blender.tar.xz" | sha256sum -c - \
     && tar xf blender.tar.xz && mv "blender-${BLENDER_VERSION}-linux-x64" blender-extracted && rm blender.tar.xz
 
