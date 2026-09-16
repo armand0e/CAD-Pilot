@@ -81,6 +81,29 @@ for (x, y, z, r) in [(0,0,10,10), (0,0,26,7), (7,0,30,3)]:
 # metaballs convert to one watertight mesh at export.
 ```
 
+## Voxel remesh - the reliable way to make an organic character printable
+
+A character built from many overlapping primitives (body, eyes, beak, wings) rarely
+comes out watertight: booleans leave non-manifold edges and the parts stay separate. The
+robust fix is a VOXEL REMESH - it rebuilds ONE clean watertight manifold from whatever
+overlapping geometry you have, guaranteed. Join everything into one object, then remesh:
+
+```python
+# after building all parts and joining them into `body`:
+bpy.ops.object.select_all(action='DESELECT'); body.select_set(True)
+bpy.context.view_layer.objects.active = body
+bpy.ops.object.join()                                  # one object holding all the overlapping parts
+rm = body.modifiers.new('R', 'REMESH'); rm.mode = 'VOXEL'
+rm.voxel_size = 0.6                                     # smaller = finer detail, more triangles
+bpy.ops.object.modifier_apply(modifier=rm.name)        # now one watertight solid
+```
+
+Reach for voxel remesh whenever a printable character is made of merged lumps - it is more
+reliable than a boolean union chain. Pick voxel_size for detail vs triangle count (keep
+under 400000). Materials are lost by the remesh, so apply materials AFTER remeshing (assign
+by region using vertex position). If you only need a render, skip this - overlapping parts
+render fine as a visual result.
+
 ## Watertight, when you want to print (skip if the goal is only a render)
 
 - An open surface (a plane, an unclosed extrude) is NOT a solid - give it thickness with

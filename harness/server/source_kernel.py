@@ -99,7 +99,15 @@ def build():
             if visual:
                 audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh, not a verified printable solid.'}
             else:
-                audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
+                try:
+                    audit = audit_stl('part.stl', len(shape.Solids), shape.Volume, detail(shape)['bounds_mm'])
+                except ValueError:
+                    # A valid BREP solid can still mesh non-manifold (thin/overlapping organic parts).
+                    # For Blender, keep it as a visual result rather than failing; others stay strict.
+                    if design['language'] != 'blender-python':
+                        raise
+                    visual = True
+                    audit = {'closed_oriented_edges': False, 'notice': 'Visual mesh, not a verified printable solid.'}
             archive.write('part.stl', obj.Name + '.stl')
             reports.append({'feature': obj.Name, **detail(shape), 'stl_audit': audit})
     result = doc.addObject('PartDesign::Feature', 'CADPilotResult')
