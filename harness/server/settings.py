@@ -29,6 +29,7 @@ def model_efforts(model):
 def default_settings(config):
     planner = config.get('planner', {})
     return {'version': 1, 'web_search': bool(config.get('research', {}).get('enabled', False)),
+            'auto_review': bool(config.get('agent', {}).get('auto_review', False)),
             'reasoning_effort': ('off' if config.get('agent', {}).get('model_thinking') is False else
                                  config.get('agent', {}).get('native_reasoning_effort') or planner.get('reasoning_effort') or 'medium'),
             'active_model': planner.get('model', 'default'),
@@ -96,7 +97,8 @@ def validate(data, previous):
     active_model = next(m for m in models if m['name'] == active)
     if effort == 'high' and 'high' not in model_efforts(active_model['model']):
         effort = 'xhigh'
-    return {'version': 1, 'web_search': bool(data.get('web_search', True)), 'reasoning_effort': effort, 'active_model': active, 'models': models}
+    return {'version': 1, 'web_search': bool(data.get('web_search', True)), 'auto_review': bool(data.get('auto_review', False)),
+            'reasoning_effort': effort, 'active_model': active, 'models': models}
 
 
 def save(settings):
@@ -134,6 +136,7 @@ def apply(config, settings):
         agent['native_thinking_token_budget'] = None
         planner.pop('thinking_token_budget', None)
     config.setdefault('research', {})['enabled'] = settings['web_search']
+    agent['auto_review'] = settings.get('auto_review', False)
     return config
 
 

@@ -227,8 +227,27 @@ async def dispatch(bridge, name, args):
     if warning:
         runner.emit({'t': 'note', 'message': warning})
     from .agent import geometry_summary
-    return work.context_result('build-result', {'ok': True, 'head': saved['head'], 'geometry': geometry_summary(saved['geometry']),
-            'files': work.describe()['files'], 'specification': work.spec_context(), 'warning': warning})
+    result = {'ok': True, 'head': saved['head'], 'geometry': geometry_summary(saved['geometry']),
+              'files': work.describe()['files'], 'specification': work.spec_context(), 'warning': warning}
+    # Optional auto-review (off by default; a settings toggle). After a FINAL build, run the same
+    # advisory reviewer the Review button uses and surface it in the result and to the UI, so the
+    # taste check applies without the model having to ask. Skip draft builds - they exist for fast
+    # iteration, not judging - and never let a review failure disturb the build.
+    if runner.config.get('agent', {}).get('auto_review'):
+        try:
+            bpy_source = project.file(saved['head'], 'model.bpy').read_text()
+        except (OSError, ValueError):
+            bpy_source = ''
+        if not re.search(r'^\s*draft\s*=\s*True', bpy_source, re.M):
+            from .review import review_revision
+            try:
+                review = await review_revision(project, saved['head'], runner.config)
+                runner.emit({'t': 'native_review', **review, 'head': saved['head'],
+                             'verification_scope': 'advisory model review, not mechanical fit certification'})
+                result['review'] = review
+            except Exception as error:  # noqa: BLE001 - auto-review is best-effort; the build stands
+                runner.emit({'t': 'note', 'message': f'Auto-review unavailable: {str(error)[:160]}'})
+    return work.context_result('build-result', result)
 
 
 async def build_revision(session, entrypoint, expected_head, research=None):

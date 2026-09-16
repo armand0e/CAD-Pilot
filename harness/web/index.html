@@ -56,7 +56,8 @@
           <h4>What will you build?</h4>
           <p>Open an application, describe your part, and watch each step take shape.</p>
           <div class="suggestions">
-            <button data-prompt="Create a 60 × 40 × 8 mm rectangular plate with four 5 mm mounting holes, each 8 mm from the adjacent edges."><span>▱</span><div>Mounting plate<small>Dimensions, holes, and a solid base</small></div><span>↗</span></button>
+            <button data-prompt="Create a 60 × 40 × 8 mm rectangular plate with four 5 mm mounting holes, each 8 mm from the adjacent edges."><span>▱</span><div>Mounting plate<small>Precise, parametric, print-ready</small></div><span>↗</span></button>
+            <button data-prompt="Model a cute cartoon owl figurine about 70 mm tall in Blender: a smooth rounded body, two big round eyes, a small beak, little wings on the sides and two feet. Smooth and characterful."><span>✦</span><div>Cute character<small>Organic sculpt in Blender</small></div><span>↗</span></button>
             <button data-prompt="Create a hollow cylindrical spacer, 20 mm outer diameter, 10 mm inner diameter, and 15 mm tall."><span>◎</span><div>Precision spacer<small>A simple part to start with</small></div><span>↗</span></button>
           </div>
         </div>
@@ -122,7 +123,7 @@
           <div class="blueprint" aria-hidden="true"><svg viewBox="0 0 500 230"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="currentColor" stroke-width=".35" opacity=".22"/></pattern></defs><rect width="500" height="230" fill="url(#grid)"/><g fill="none" stroke="currentColor" stroke-linejoin="round"><path d="M125 117 278 38 395 100 242 180Z" fill="currentColor" fill-opacity=".035" stroke-width="1.6"/><path d="M125 117v22l117 62 153-79v-22M242 180v21" stroke-width="1.6"/><g stroke-width="1.4"><ellipse cx="180" cy="111" rx="11" ry="5.5"/><ellipse cx="277" cy="61" rx="11" ry="5.5"/><ellipse cx="340" cy="99" rx="11" ry="5.5"/><ellipse cx="243" cy="149" rx="11" ry="5.5"/></g><path d="m109 114-24-13m166-75-23-12M97 95 233 25m-132 66-8 8m144-78-8 8M260 214l10 7m137-86 14 8m-143 78 136-71" opacity=".4" stroke-width=".8"/><path d="M50 185v24h24M50 209l-12 7" opacity=".5"/></g><g fill="currentColor" font-family="monospace" font-size="10" opacity=".65"><text x="145" y="48">60.00</text><text x="340" y="203">40.00</text><text x="43" y="177">Z</text><text x="81" y="214">X</text><text x="23" y="225">Y</text></g></svg></div>
           <span class="eyebrow">Your next idea starts here</span>
           <h2>Let’s give it shape.</h2>
-          <p class="launcher-sub">A little imagination. Something you can hold.<br>Choose a CAD tool and make it your own.</p>
+          <p class="launcher-sub">From precise mechanical parts to organic, animated characters.<br>Choose a tool and make it your own.</p>
           <div id="app-grid" class="app-grid"></div>
           <div id="recent-projects" class="recent-projects"></div>
           <p id="tool-note" class="tool-note hidden"></p>
@@ -150,7 +151,7 @@
               <div class="model-tools"><label>Tools <select id="engine-select" aria-label="Modeling tools"><option value="hybrid">Native + visual</option><option value="visual">Visual only</option></select></label><button id="btn-use-saved" class="btn sm" title="Future native edits use the saved recipe, not unsaved viewport changes. Open documents are preserved.">Use saved revision</button></div>
               <div class="model-tools"><label>History <select id="revision-select" aria-label="Saved revisions"></select></label><button id="btn-restore" class="btn sm">Restore as new revision</button><button id="btn-review" class="btn sm" title="Run an independent advisory review of the saved model against the request (form, features, and, for artistic work, craft quality).">Review this model</button></div>
               <div id="review-result" class="review-result hidden"></div>
-              <p id="model-warning">Edit Python or OpenSCAD source, draw custom profiles, and inspect saved geometry from any direction. Each successful build keeps a revision.</p>
+              <p id="model-warning">Edit FreeCAD Python, OpenSCAD or Blender source, draw custom profiles, and inspect saved geometry from any direction. Each successful build keeps a revision.</p>
             </section>
           </div>
           <details id="workspace-editor" class="workspace-editor">
@@ -178,6 +179,7 @@
       <section class="settings-section">
         <label class="settings-row"><span>Web search</span><span class="switch"><input id="settings-web" type="checkbox"><i></i></span></label>
         <label class="settings-row"><span>Reasoning effort</span><select id="settings-effort"></select></label>
+        <label class="settings-row"><span>Auto-review builds<small>Run an independent review after each final build and surface its notes. Draft builds are skipped.</small></span><span class="switch"><input id="settings-autoreview" type="checkbox"><i></i></span></label>
       </section>
       <section class="settings-section">
         <div class="settings-row"><span>Model providers</span><button type="button" class="btn sm" id="settings-add-model">+ Add model</button></div>

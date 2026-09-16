@@ -54,6 +54,7 @@ async function refresh() {
     const data = await api('/api/onboarding');
     instance = data.instance;
     el('connection').textContent = data.online ? 'Connected' : 'Waiting for your computer';
+    el('connection').classList.toggle('online', data.online);
     el('step-account').classList.add('ready');
     el('step-computer').classList.toggle('ready', data.online);
     el('model-fields').disabled = !data.online;

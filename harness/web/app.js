@@ -812,6 +812,7 @@ function modelRow(model, active, index) {
 async function openSettings() {
   const settings = await loadSettings(); if (!settings) { toast('Settings are unavailable', 'err'); return; }
   $('settings-web').checked = settings.web_search;
+  $('settings-autoreview').checked = settings.auto_review;
   const effort = $('settings-effort'); effort.replaceChildren(); for (const e of settings.efforts) { const o = document.createElement('option'); o.value = e; o.textContent = e; effort.append(o); } effort.value = settings.reasoning_effort;
   const list = $('settings-models'); list.replaceChildren(); settings.models.forEach((m, i) => list.append(modelRow(m, m.name === settings.active_model, i)));
   $('settings-status').textContent = ''; $('settings-dialog').showModal();
@@ -825,7 +826,7 @@ $('settings-save').onclick = async () => {
   const activeRow = rows.find(row => row.querySelector('input[type=radio]').checked);
   const active_model = activeRow ? activeRow.querySelector('input[data-field=name]').value : (models[0]?.name || '');
   try {
-    const saved = await saveSettings({ web_search: $('settings-web').checked, reasoning_effort: $('settings-effort').value, models, active_model });
+    const saved = await saveSettings({ web_search: $('settings-web').checked, auto_review: $('settings-autoreview').checked, reasoning_effort: $('settings-effort').value, models, active_model });
     $('settings-status').textContent = 'Saved'; $('web-search-toggle').checked = saved.web_search; setTimeout(() => $('settings-dialog').close(), 400);
   } catch (error) { $('settings-status').textContent = error.message; }
 };

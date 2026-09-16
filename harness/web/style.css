@@ -63,13 +63,13 @@ select { min-height: 34px; padding: 5px 9px; background: var(--bg-elev); color: 
 .chat { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--hairline2) transparent; }
 .chat > * { flex: none; }
 .empty-state { width: 100%; margin: auto; color: var(--text2); }
-.empty-icon { margin: 0 0 23px; width: 44px; height: 44px; display: grid; place-items: center; color: var(--accent); }
+.empty-icon { margin: 0 0 23px; width: 46px; height: 46px; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-soft); border-radius: 14px; }
 .eyebrow { color: var(--text3); font: 11px/1.5 var(--font); letter-spacing: .035em; }
 .empty-state h4 { margin: 10px 0; }
 .empty-state p { max-width: 310px; margin: 0; }
 .suggestions { display: grid; gap: 8px; margin-top: 26px; }
-.suggestions button { display: flex; align-items: center; gap: 12px; padding: 13px 12px; text-align: left; }
-#agent-panel .suggestions button:hover { background: var(--surface-inset); }
+.suggestions button { display: flex; align-items: center; gap: 12px; padding: 13px 14px; text-align: left; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--bg-elev); transition: transform var(--motion-fast) var(--motion-ease), background var(--motion-fast), border-color var(--motion-fast); }
+#agent-panel .suggestions button:hover { background: var(--surface-hover); border-color: var(--border-hover); transform: translateY(-1px); }
 .suggestions button > span:first-child { font-size: 22px; color: var(--accent); }
 .suggestions button > span:last-child { margin-left: auto; color: var(--text3); }
 .suggestions small { display: block; font-size: 11px; margin-top: 3px; }
@@ -98,7 +98,7 @@ select { min-height: 34px; padding: 5px 9px; background: var(--bg-elev); color: 
 .control-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--hairline); border-radius: 6px; padding: 4px 8px; white-space: nowrap; }
 .badge-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 .viewport { flex: 1; min-height: 0; position: relative; margin: 0 20px; border-radius: var(--r-lg); background: var(--surface-canvas); border: 1px solid var(--hairline2); display: grid; place-items: center; overflow: hidden; }
-.viewport:has(.launcher:not(.hidden)) { background: var(--bg-elev); }
+.viewport:has(.launcher:not(.hidden)) { background: radial-gradient(62% 55% at 50% -2%, var(--accent-soft), transparent 68%), var(--bg-elev); }
 .viewport canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; outline: none; }
 .viewport canvas:focus { cursor: crosshair; }
 .viewport canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -377,6 +377,8 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .settings-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .settings-section { padding: 10px 18px; border-top: 1px solid var(--hairline); }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; }
+.settings-row > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.settings-row small { color: var(--text3); font-size: 11px; line-height: 1.45; font-weight: 400; max-width: 340px; }
 .settings-row select, .settings-model input, .settings-model select { font-size: 13px; padding: 5px 8px; border: 1px solid var(--hairline2); border-radius: 6px; background: var(--surface-inset); color: var(--text); }
 .settings-model .span-2 select { flex: 0 0 auto; max-width: 45%; min-width: 0; }
 .settings-help { margin: 0 0 8px; font-size: 12px; color: var(--text3); }

@@ -1,30 +1,88 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set up your workspace · CADPilot</title><link rel="stylesheet" href="/static/login.css"><link rel="stylesheet" href="/static/onboarding.css">
+<title>Set up your workspace · CADPilot</title>
+<link rel="stylesheet" href="/static/theme.css"><link rel="stylesheet" href="/static/onboarding.css">
 <script src="/static/auth.js" defer></script><script src="/static/onboarding.js" defer></script></head>
-<body><main class="setup"><header><p class="brand">◇ CADPilot</p><button id="btn-logout" hidden>Sign out</button></header>
-<h1>Your workspace. Your computer.</h1><p class="intro">Run CAD and web search on your computer. Use your account to reach them from this browser.</p>
-<ol class="steps"><li id="step-account">Account ready</li><li id="step-computer">Connect computer</li><li id="step-model">Choose model</li></ol>
-<section><div class="section-title"><h2>1. Connect your CAD computer</h2><span id="connection" role="status">Checking…</span></div>
-<p>Choose the operating system of the computer that will run FreeCAD, OpenSCAD and SearXNG. Keep Docker running while you work.</p>
-<div class="platform-tabs" role="tablist" aria-label="Your computer's operating system">
-<button id="platform-windows" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="windows">Windows</button>
-<button id="platform-linux" role="tab" aria-controls="platform-panel" aria-selected="true" data-platform="linux">Linux</button>
-<button id="platform-macos" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="macos">macOS</button>
-</div>
-<div id="platform-panel" role="tabpanel" aria-labelledby="platform-linux"><p id="platform-help">Install Docker Engine with Compose, Git and curl. Run your command in a terminal.</p>
-<p id="distribution">Your command pulls <a href="https://github.com/armand0e/CAD-Pilot" target="_blank" rel="noopener noreferrer">CAD-Pilot from GitHub</a>, builds the CAD image and starts SearXNG.</p>
-<button id="generate">Generate connection command</button>
-<div id="command-panel" hidden><p id="command-help" class="hint">Run in your Linux terminal:</p><pre id="command" tabindex="0"></pre><button id="copy-command" class="secondary">Copy command</button><p id="pairing-expiry" class="hint"></p></div>
-</div>
-<p class="hint">The first build downloads several GB and may take a while. Your computer connects to this account automatically; no incoming port or extra tunnel is needed. CAD runs as Linux x86-64, including through Docker Desktop's amd64 support.</p>
-<details><summary>Reconnect or replace a computer</summary><p>Generating a new command revokes the previous connection. Rerun it on the same computer to update the source and keep your saved projects. The code is private, works once, and expires after 24 hours.</p><button id="disconnect" class="secondary" hidden>Disconnect this computer</button>
-<p>For a setup without Git, download and extract a ZIP, then run <code>docker compose up -d --build --wait</code> in that folder. This also replaces your current pairing code.</p><button id="download" class="secondary">Download ZIP instead</button></details></section>
-<section id="model-section"><h2>2. Choose your model</h2><p>These settings are saved on your CAD computer. Use a model that supports images and tool calls.</p>
-<form id="model-form"><fieldset id="model-fields" disabled><label for="model-url">Provider API URL</label><input id="model-url" type="url" required placeholder="http://host.docker.internal:8000/v1">
-<p class="hint">For a model running on the same computer as Docker, use <code>host.docker.internal</code> instead of <code>localhost</code>.</p>
-<label for="model-id">Model ID</label><input id="model-id" required placeholder="The model ID served by your provider">
-<label for="model-key">API key (if required)</label><input id="model-key" type="password" autocomplete="off" placeholder="Optional">
-<button type="submit">Save model and check connection</button></fieldset></form></section>
-<p id="setup-message" role="status" aria-live="polite"></p><button id="enter" disabled>Enter the studio →</button>
-</main></body></html>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+<main class="setup">
+  <header class="setup-top">
+    <p class="brand"><span class="brand-mark">◇</span> CADPilot</p>
+    <button id="btn-logout" class="ghost" hidden>Sign out</button>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">Private setup · runs on your own computer</p>
+    <h1>Your workspace.<br>Your computer.</h1>
+    <p class="intro">CADPilot drives real CAD on a machine you control — precise parts in FreeCAD and OpenSCAD, organic and character work in Blender with materials, lighting and animation, and web search for real dimensions. Connect a computer once and reach it all from this browser.</p>
+    <ul class="capabilities">
+      <li><span class="cap-ic">⚙︎</span> Parametric &amp; mechanical</li>
+      <li><span class="cap-ic">✦</span> Sculpt, texture, animate</li>
+      <li><span class="cap-ic">◷</span> Print-ready output</li>
+    </ul>
+  </section>
+
+  <ol class="steps" aria-label="Setup progress">
+    <li id="step-account"><span class="step-dot"></span><span class="step-label">Account ready</span></li>
+    <li id="step-computer"><span class="step-dot"></span><span class="step-label">Connect computer</span></li>
+    <li id="step-model"><span class="step-dot"></span><span class="step-label">Choose model</span></li>
+  </ol>
+
+  <section class="card">
+    <div class="card-head">
+      <div><span class="card-num">1</span><h2>Connect your CAD computer</h2></div>
+      <span id="connection" class="status-pill" role="status">Checking…</span>
+    </div>
+    <p class="lead">Pick the operating system of the computer that will run FreeCAD, OpenSCAD, Blender and SearXNG, then run the generated command there. Keep Docker running while you work.</p>
+
+    <div class="platform-tabs" role="tablist" aria-label="Your computer's operating system">
+      <button id="platform-windows" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="windows">Windows</button>
+      <button id="platform-linux" role="tab" aria-controls="platform-panel" aria-selected="true" data-platform="linux">Linux</button>
+      <button id="platform-macos" role="tab" aria-controls="platform-panel" aria-selected="false" tabindex="-1" data-platform="macos">macOS</button>
+    </div>
+    <div id="platform-panel" role="tabpanel" aria-labelledby="platform-linux">
+      <p id="platform-help" class="lead">Install Docker Engine with Compose, Git and curl. Run your command in a terminal.</p>
+      <p id="distribution" class="hint">Your command pulls <a href="https://github.com/armand0e/CAD-Pilot" target="_blank" rel="noopener noreferrer">CAD-Pilot from GitHub</a>, builds the CAD image and starts SearXNG.</p>
+      <button id="generate" class="primary">Generate connection command</button>
+      <div id="command-panel" hidden>
+        <p id="command-help" class="hint">Run in your Linux terminal:</p>
+        <pre id="command" tabindex="0"></pre>
+        <div class="command-row"><button id="copy-command" class="ghost">Copy command</button><span id="pairing-expiry" class="hint"></span></div>
+      </div>
+    </div>
+    <p class="hint fine">The first build downloads several GB and may take a while. Your computer connects automatically — no incoming port or tunnel needed. CAD runs as Linux x86-64, including through Docker Desktop's amd64 support.</p>
+
+    <details class="reconnect">
+      <summary>Reconnect or replace a computer</summary>
+      <p class="hint">Generating a new command revokes the previous connection. Rerun it on the same computer to update the source and keep your saved projects. The code is private, works once, and expires after 24 hours.</p>
+      <div class="detail-actions">
+        <button id="disconnect" class="ghost" hidden>Disconnect this computer</button>
+        <button id="download" class="ghost">Download ZIP instead</button>
+      </div>
+      <p class="hint fine">Without Git: download and extract the ZIP, then run <code>docker compose up -d --build --wait</code> in that folder. This also replaces your current pairing code.</p>
+    </details>
+  </section>
+
+  <section id="model-section" class="card">
+    <div class="card-head"><div><span class="card-num">2</span><h2>Choose your model</h2></div></div>
+    <p class="lead">Saved on your CAD computer. Use a model that supports images and tool calls.</p>
+    <form id="model-form">
+      <fieldset id="model-fields" disabled>
+        <label for="model-url">Provider API URL</label>
+        <input id="model-url" type="url" required placeholder="http://host.docker.internal:8000/v1">
+        <p class="hint">For a model on the same computer as Docker, use <code>host.docker.internal</code> instead of <code>localhost</code>.</p>
+        <label for="model-id">Model ID</label>
+        <input id="model-id" required placeholder="The model ID served by your provider">
+        <label for="model-key">API key <span class="optional">(if required)</span></label>
+        <input id="model-key" type="password" autocomplete="off" placeholder="Optional">
+        <button type="submit" class="primary">Save model and check connection</button>
+      </fieldset>
+    </form>
+  </section>
+
+  <div class="setup-foot">
+    <p id="setup-message" role="status" aria-live="polite"></p>
+    <button id="enter" class="enter" disabled>Enter the studio <span aria-hidden="true">→</span></button>
+  </div>
+</main>
+</body></html>
