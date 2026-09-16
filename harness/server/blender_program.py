@@ -108,3 +108,23 @@ try:
     print('BLENDER_RENDER_OK')
 except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a render is a bonus
     print('BLENDER_RENDER_SKIPPED %s' % error)
+
+# Recording: if the model set a multi-frame timeline (keyframes and frame_end > frame_start),
+# render a bounded MP4 with the same studio. Best-effort and frame/time-capped so it never
+# stalls a build; the printed mesh and the still render are unaffected.
+try:
+    import os
+    scene = bpy.context.scene
+    if scene.camera is not None and scene.frame_end > scene.frame_start:
+        frames = min(scene.frame_end - scene.frame_start + 1, 120)
+        scene.frame_end = scene.frame_start + frames - 1
+        scene.cycles.samples = 16
+        scene.cycles.time_limit = 15
+        scene.render.image_settings.file_format = 'FFMPEG'
+        scene.render.ffmpeg.format = 'MPEG4'
+        scene.render.ffmpeg.codec = 'H264'
+        scene.render.filepath = os.path.join(os.path.dirname(out_stl), 'animation.mp4')
+        bpy.ops.render.render(animation=True)
+        print('BLENDER_ANIM_OK frames=%d' % frames)
+except Exception as error:  # noqa: BLE001
+    print('BLENDER_ANIM_SKIPPED %s' % error)

@@ -308,7 +308,9 @@ dialog dd { margin: 0; padding: 4px 8px; border: 1px solid var(--hairline2); bor
 .attachment-chip button { font-size: 13px; color: var(--text3); padding: 0 2px; }
 .attach-btn { font-size: 18px; color: var(--text3); align-self: flex-end; }
 .model-views { display: flex; gap: 6px; margin: 6px 0; }
+.model-views { flex-wrap: wrap; }
 .model-views img { width: 31%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: #fafafa; }
+.model-animation { width: 100%; margin-top: 4px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: #111; }
 
 /* Composer card: one text row, one toolbar row */
 .composer-card { border: 1px solid var(--hairline2); border-radius: var(--r-md); background: var(--bg-elev); box-shadow: var(--shadow); }

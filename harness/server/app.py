@@ -295,6 +295,8 @@ async def artifact(project_id: str, revision: str, name: str):
         raise HTTPException(404, str(error)) from error
     if name.endswith('.png'):
         return FileResponse(path, media_type='image/png')
+    if name.endswith('.mp4'):
+        return FileResponse(path, media_type='video/mp4')  # inline, seekable; the download link forces save
     return FileResponse(path, filename=f'{project_id}-{revision}-{name}', media_type='application/octet-stream')
 
 

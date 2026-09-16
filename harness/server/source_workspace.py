@@ -536,6 +536,9 @@ class SourceWorkspace:
                 render = scratch / 'render.png'
                 if render.is_file() and not render.is_symlink() and render.stat().st_size <= MAX_FILE:
                     shutil.copyfile(render, stage / 'view-render.png')  # Cycles beauty view, saved with the revision
+                animation = scratch / 'animation.mp4'
+                if animation.is_file() and not animation.is_symlink() and animation.stat().st_size <= MAX_FILE:
+                    shutil.copyfile(animation, stage / 'animation.mp4')  # recorded MP4 when the model animated
                 with zipfile.ZipFile(stage / 'source.zip') as archive:
                     (stage / 'model.bpy').write_bytes(archive.read(relative))
                 (stage / 'model.scad').write_text('// Blender build; faceted preview only.\nimport("model.stl");\n')

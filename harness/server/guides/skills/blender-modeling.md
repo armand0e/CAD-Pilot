@@ -114,6 +114,33 @@ Give different parts different materials so they read apart in the render. An im
 texture can drive Base Color for surface detail; keep textures simple. After the build,
 read the `render` view with view_image - it is the honest picture of the result.
 
+## Animation and recording (optional)
+
+If you set a multi-frame timeline (keyframes and scene.frame_end > frame_start), the
+build also records a bounded MP4 with the studio render and saves it as the animation,
+shown and downloadable in the app. This is for motion the user asked to see - a turntable,
+a walk cycle, a mechanism moving - not for printing (the printed mesh is the frame-1 pose).
+
+```python
+import bpy
+# The animated object still has to be a watertight solid (a sphere is; Suzanne is NOT).
+bpy.ops.mesh.primitive_uv_sphere_add(radius=12, location=(0, 0, 12), segments=48, ring_count=24)
+obj = bpy.context.active_object
+obj.rotation_euler = (0, 0, 0);       obj.keyframe_insert('rotation_euler', frame=1)   # spin
+obj.rotation_euler = (0, 0, 6.283);   obj.keyframe_insert('rotation_euler', frame=48)
+bpy.context.scene.frame_start = 1
+bpy.context.scene.frame_end = 48
+```
+
+Keep it short (up to ~120 frames; longer is trimmed) - recording renders every frame, so
+it is slow. Animate transforms, shape keys, or an armature's pose bones. The still render
+and the printable mesh are the frame-1 state, so pose the important frame first. For a
+turntable of the whole model, orbit the camera instead of spinning the object.
+
+Because the harness validates the mesh as a printable solid, every Blender build - animated
+or not - must be watertight and manifold. A non-watertight sculpt (an open surface, Suzanne)
+is rejected; give it thickness with SOLIDIFY or close it first.
+
 ## Verify and hand off to CAD
 
 - After cad_build, render and read the views (see verify-your-work.md); set views to a

@@ -222,14 +222,17 @@ function renderProject(project) {
   $('model-measurements').textContent = g ? `${g.bounds_mm.map(v=>Number(v.toFixed(3))).join(' × ')} mm · ${g.volume_mm3.toFixed(2)} mm³ · ${g.representation || `${g.cuts?.length||0} material-removing cuts`}` : 'Describe a part to create an editable model and exports.';
   const views = $('model-views'); if (views) { views.replaceChildren();
     if (project.head && project.geometry?.views?.length) { for (const name of project.geometry.views.slice(0, 6)) {
-      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.title = `${name} view`; img.loading = 'lazy'; views.append(img); } } }
+      const img = document.createElement('img'); img.src = `/api/projects/${project.id}/${project.head}/view-${name}.png?v=${project.head}`; img.alt = `${name} view of ${project.head}`; img.title = `${name} view`; img.loading = 'lazy'; views.append(img); } }
+    if (project.head && 'animation.mp4' in (project.revisions.find(r=>r.id===project.head)?.sha256||{})) {
+      const vid = document.createElement('video'); vid.src = `/api/projects/${project.id}/${project.head}/animation.mp4?v=${project.head}`;
+      vid.controls = vid.loop = vid.muted = vid.autoplay = vid.playsInline = true; vid.className = 'model-animation'; vid.title = 'Recorded animation'; views.append(vid); } }
   $('model-parameters').replaceChildren();
   for (const p of project.design?.parameters || []) {
     const item = document.createElement('span'); item.textContent = `${p.name}: ${p.value}`; $('model-parameters').append(item);
   }
   $('model-downloads').replaceChildren();
   const artifacts=project.revisions.find(r=>r.id===project.head)?.sha256||{};
-  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','design-spec.json':'Requirements','parts.zip':'Part STLs'}).filter(([name])=>name in artifacts)] : []) {
+  for (const [name, label] of project.head ? [['model.FCStd','FreeCAD'],['model.scad','OpenSCAD'],['model.step','STEP'],['model.stl','STL'],['design.json','Recipe'],...Object.entries({'source.zip':'Source files','model.py':'Python','model.bpy':'Blender','design-spec.json':'Requirements','parts.zip':'Part STLs','animation.mp4':'Animation'}).filter(([name])=>name in artifacts)] : []) {
     const link = document.createElement('a'); link.textContent = `↓ ${name==='design.json'&&project.design?.format==='source-v1'?'Build info':name==='model.scad'&&project.design?.language==='freecad-python'?'OpenSCAD mesh preview':label}`;
     link.href = `/api/projects/${project.id}/${project.head}/${name}`; link.download = ''; $('model-downloads').append(link);
   }
