@@ -112,6 +112,10 @@
         <span id="vp-badge" class="control-badge hidden"><span class="badge-dot"></span>Agent has control</span>
         <span class="spacer"></span>
         <span id="vp-meta" class="stage-meta"></span>
+        <div id="view-mode" class="view-mode hidden" role="group" aria-label="Viewport mode">
+          <button data-view="preview" class="on" type="button" title="Watch the model's renders as it builds">Preview</button>
+          <button data-view="live" type="button" title="See and control the live CAD application">Live app</button>
+        </div>
         <div class="stage-actions">
           <button id="btn-shot" class="icon-btn hidden" title="Save screenshot"><svg viewBox="0 0 20 20" width="15" height="15"><rect x="2.5" y="5" width="15" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 5l1.2-2h3.6L13 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           <button id="btn-full" class="icon-btn hidden" title="Fullscreen"><svg viewBox="0 0 20 20" width="15" height="15"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
@@ -123,13 +127,24 @@
           <div class="blueprint" aria-hidden="true"><svg viewBox="0 0 500 230"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="currentColor" stroke-width=".35" opacity=".22"/></pattern></defs><rect width="500" height="230" fill="url(#grid)"/><g fill="none" stroke="currentColor" stroke-linejoin="round"><path d="M125 117 278 38 395 100 242 180Z" fill="currentColor" fill-opacity=".035" stroke-width="1.6"/><path d="M125 117v22l117 62 153-79v-22M242 180v21" stroke-width="1.6"/><g stroke-width="1.4"><ellipse cx="180" cy="111" rx="11" ry="5.5"/><ellipse cx="277" cy="61" rx="11" ry="5.5"/><ellipse cx="340" cy="99" rx="11" ry="5.5"/><ellipse cx="243" cy="149" rx="11" ry="5.5"/></g><path d="m109 114-24-13m166-75-23-12M97 95 233 25m-132 66-8 8m144-78-8 8M260 214l10 7m137-86 14 8m-143 78 136-71" opacity=".4" stroke-width=".8"/><path d="M50 185v24h24M50 209l-12 7" opacity=".5"/></g><g fill="currentColor" font-family="monospace" font-size="10" opacity=".65"><text x="145" y="48">60.00</text><text x="340" y="203">40.00</text><text x="43" y="177">Z</text><text x="81" y="214">X</text><text x="23" y="225">Y</text></g></svg></div>
           <span class="eyebrow">Your next idea starts here</span>
           <h2>Let’s give it shape.</h2>
-          <p class="launcher-sub">From precise mechanical parts to organic, animated characters.<br>Choose a tool and make it your own.</p>
-          <div id="app-grid" class="app-grid"></div>
+          <p class="launcher-sub">Describe what you want to make. The model picks the right engine — FreeCAD, OpenSCAD or Blender — and you watch it build, live.</p>
+          <button id="btn-start-modeling" class="start-modeling" type="button">Start modeling <span aria-hidden="true">→</span></button>
           <div id="recent-projects" class="recent-projects"></div>
-          <p id="tool-note" class="tool-note hidden"></p>
+          <details class="launcher-advanced"><summary>Or open a specific application to drive yourself</summary>
+            <div id="app-grid" class="app-grid"></div>
+            <p id="tool-note" class="tool-note hidden"></p>
+          </details>
           <div class="launcher-foot"><span class="dot"></span> Runs locally <span>·</span> You can take control at any time</div>
         </div>
         <div id="booting" class="booting hidden"><div class="spinner"></div><span id="booting-text">Starting…</span></div>
+        <div id="model-preview" class="model-preview hidden">
+          <div class="preview-stage">
+            <img id="preview-img" alt="Live render of the model" hidden>
+            <video id="preview-video" class="hidden" loop muted autoplay playsinline></video>
+            <div id="preview-empty" class="preview-empty"><div class="preview-spark">✦</div><strong>Watching for the first build</strong><span>The model's renders — form, materials, lighting, textures — appear here as it works, and the animation plays when it makes one.</span></div>
+          </div>
+          <div id="preview-badge" class="preview-badge" hidden></div>
+        </div>
         <canvas id="screen" class="hidden" tabindex="0"></canvas>
         <div id="focus-hint" class="focus-hint hidden">Click to interact</div>
         <div id="agent-cursor" class="agent-cursor hidden">
@@ -180,6 +195,7 @@
         <label class="settings-row"><span>Web search</span><span class="switch"><input id="settings-web" type="checkbox"><i></i></span></label>
         <label class="settings-row"><span>Reasoning effort</span><select id="settings-effort"></select></label>
         <label class="settings-row"><span>Auto-review builds<small>Run an independent review after each final build and surface its notes. Draft builds are skipped.</small></span><span class="switch"><input id="settings-autoreview" type="checkbox"><i></i></span></label>
+        <label class="settings-row"><span>Preferred engine<small>A hint for which modeling tool to reach for first. The model still chooses per task.</small></span><select id="settings-engine"><option value="auto">Auto (model decides)</option><option value="freecad">FreeCAD · precise</option><option value="openscad">OpenSCAD · code</option><option value="blender">Blender · organic</option></select></label>
       </section>
       <section class="settings-section">
         <div class="settings-row"><span>Model providers</span><button type="button" class="btn sm" id="settings-add-model">+ Add model</button></div>

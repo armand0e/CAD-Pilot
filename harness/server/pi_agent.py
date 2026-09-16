@@ -249,10 +249,14 @@ class PiBridge:
             limit=16 * 1024 * 1024, env={**os.environ, 'PI_OFFLINE': '1', 'PI_SKIP_VERSION_CHECK': '1'})
         self.reader = asyncio.create_task(self._read())
         self.stderr = asyncio.create_task(self._drain_stderr())
+        engine_pref = (self.runner.config.get('agent', {}) or {}).get('preferred_engine', 'auto') if not research else 'auto'
+        engine_hint = {'freecad': '\nThe user prefers model.py (FreeCAD) when the task suits it; still use whatever engine the task genuinely needs.\n',
+                       'openscad': '\nThe user prefers model.scad (OpenSCAD) when the task suits it; still use whatever engine the task genuinely needs.\n',
+                       'blender': '\nThe user prefers model.bpy (Blender) when the task suits it; still use whatever engine the task genuinely needs.\n'}.get(engine_pref, '')
         result = await self.request('init', cwd=str(self.ctx['project'].path.resolve()), model=self.model, sessionFile=session_file,
             newSession=getattr(self.runner, '_pi_new_session', False), legacyMessages=legacy_messages(self.runner),
             tools=definitions, activeTools=self.active_tools, workspace=not research,
-            systemPrompt=system_prompt + '\nImages have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n')
+            systemPrompt=system_prompt + '\nImages have IDs; view_image can reopen references and saved CAD views (cad:r0001:top), including after compaction. Older pixels may be omitted from a request; read the image again when visual evidence is needed.\n' + engine_hint)
         self.runner._pi_new_session = False
         self.runner.pi_session = {'id': result['sessionId'], 'file': result['sessionFile'], 'runtime': 'pi-coding-agent', 'version': '0.85.1'}
         consumed = set(result.get('consumed', []))

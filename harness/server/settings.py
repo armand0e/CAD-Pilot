@@ -30,6 +30,7 @@ def default_settings(config):
     planner = config.get('planner', {})
     return {'version': 1, 'web_search': bool(config.get('research', {}).get('enabled', False)),
             'auto_review': bool(config.get('agent', {}).get('auto_review', False)),
+            'preferred_engine': config.get('agent', {}).get('preferred_engine', 'auto'),
             'reasoning_effort': ('off' if config.get('agent', {}).get('model_thinking') is False else
                                  config.get('agent', {}).get('native_reasoning_effort') or planner.get('reasoning_effort') or 'medium'),
             'active_model': planner.get('model', 'default'),
@@ -97,8 +98,11 @@ def validate(data, previous):
     active_model = next(m for m in models if m['name'] == active)
     if effort == 'high' and 'high' not in model_efforts(active_model['model']):
         effort = 'xhigh'
+    engine = str(data.get('preferred_engine', 'auto'))
+    if engine not in ('auto', 'freecad', 'openscad', 'blender'):
+        engine = 'auto'
     return {'version': 1, 'web_search': bool(data.get('web_search', True)), 'auto_review': bool(data.get('auto_review', False)),
-            'reasoning_effort': effort, 'active_model': active, 'models': models}
+            'preferred_engine': engine, 'reasoning_effort': effort, 'active_model': active, 'models': models}
 
 
 def save(settings):
@@ -137,6 +141,7 @@ def apply(config, settings):
         planner.pop('thinking_token_budget', None)
     config.setdefault('research', {})['enabled'] = settings['web_search']
     agent['auto_review'] = settings.get('auto_review', False)
+    agent['preferred_engine'] = settings.get('preferred_engine', 'auto')
     return config
 
 

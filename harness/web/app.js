@@ -163,6 +163,7 @@ async function loadApps() {
   const grid = $("app-grid");
   grid.innerHTML = "";
   if (!Array.isArray(apps)) return;
+  state.apps = apps;
   if (!apps.length) grid.innerHTML = '<p class="tool-note">No CAD applications detected.</p>';
   const shown = new Set();
   for (const app of apps) {
@@ -217,6 +218,8 @@ function renderProject(project) {
   state.project = project;
   workspaceEditor.projectChanged(project);
   if (changedRevision) $('review-result').classList.add('hidden');
+  updatePreview(project);
+  updateViewport();
   $('model-panel').classList.remove('hidden');
   $('model-name').textContent = project.head ? `${project.name} · ${project.head}` : 'No saved revision yet';
   $('model-status').textContent = project.geometry?.valid_solid ? '✓ Valid solid' : project.geometry?.valid_geometry ? `✓ ${project.geometry.solid_count} valid parts` : 'Native tools ready';
@@ -344,6 +347,71 @@ async function launch(app, projectId = null) {
   } finally { state.launching = false; }
 }
 
+/* ---------------- start & watch: default session + live render preview ---------------- */
+function defaultApp() {
+  const apps = state.apps || [];
+  return apps.find(a => /freecad/i.test(a.name)) || apps.find(a => /openscad/i.test(a.name)) || apps[0] || null;
+}
+async function startModeling() {
+  const app = defaultApp();
+  if (!app) { toast('No CAD application detected on the worker yet.', 'err'); return; }
+  state.viewMode = 'preview';
+  await launch(app);
+}
+$('btn-start-modeling').onclick = startModeling;
+
+const ENGINE_LABEL = { 'blender-python': 'Blender', 'freecad-python': 'FreeCAD', 'openscad': 'OpenSCAD' };
+function projectEngine(project) {
+  return ENGINE_LABEL[project?.design?.language] || (project?.design?.format === 'source-v1' ? 'Model' : 'CAD');
+}
+function bestRenderName(project) {
+  const views = project?.geometry?.views || [];
+  for (const v of ['render', 'three-quarter', 'threeq', 'face', 'iso', 'front']) if (views.includes(v)) return v;
+  return views[0] || null;
+}
+function updatePreview(project) {
+  const img = $('preview-img'), video = $('preview-video'), empty = $('preview-empty'), badge = $('preview-badge');
+  const head = project?.head;
+  const artifacts = head ? (project.revisions.find(r => r.id === head)?.sha256 || {}) : {};
+  const hasAnim = 'animation.mp4' in artifacts;
+  const viewName = head ? bestRenderName(project) : null;
+  if (head && (viewName || hasAnim)) {
+    empty.hidden = true;
+    if (hasAnim) {
+      const src = `/api/projects/${project.id}/${head}/animation.mp4?v=${head}`;
+      if (video.getAttribute('src') !== src) video.src = src;
+      video.classList.remove('hidden'); img.hidden = true;
+    } else {
+      video.classList.add('hidden'); video.removeAttribute('src'); img.hidden = false;
+      img.src = `/api/projects/${project.id}/${head}/view-${viewName}.png?v=${head}`;
+    }
+    badge.hidden = false;
+    badge.textContent = `${projectEngine(project)} · ${head}${project.geometry?.printable === false ? ' · visual' : ''}`;
+  } else {
+    img.hidden = true; video.classList.add('hidden'); video.removeAttribute('src'); empty.hidden = false; badge.hidden = true;
+  }
+}
+function setViewMode(mode) {
+  state.viewMode = mode;
+  for (const b of document.querySelectorAll('#view-mode [data-view]')) b.classList.toggle('on', b.dataset.view === mode);
+  updateViewport();
+}
+for (const b of document.querySelectorAll('#view-mode [data-view]')) b.onclick = () => setViewMode(b.dataset.view);
+
+// Central viewport display: launcher (no session), the live render preview, or the streamed app.
+function updateViewport() {
+  const hasSession = !!state.session;
+  const live = state.viewMode === 'live';
+  $('view-mode').classList.toggle('hidden', !hasSession);
+  $('launcher').classList.toggle('hidden', hasSession);
+  if (!hasSession) { $('model-preview').classList.add('hidden'); $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
+  $('model-preview').classList.toggle('hidden', live);
+  if (!live) { $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
+  const ready = state.firstFrame;
+  $('screen').classList.toggle('hidden', !ready);
+  $('booting').classList.toggle('hidden', ready);
+}
+
 async function endSession(id) {
   const dialog = $("close-dialog");
   if (dialog.open) return;
@@ -374,6 +442,7 @@ function detachUI() {
   $("screen").classList.add("hidden");
   $("launcher").classList.remove("hidden");
   $("booting").classList.add("hidden");
+  state.viewMode = 'preview'; updateViewport();
   $("vp-title").textContent = "Your workspace";
   $("vp-meta").textContent = "";
   for (const id of ["btn-shot", "btn-full", "btn-close-session"]) $(id).classList.add("hidden");
@@ -431,6 +500,7 @@ function attach(session) {
   state.viewWS?.close?.(); state.agentWS?.close?.();
   const generation = ++state.generation;
   state.session = session;
+  state.viewMode = state.viewMode || 'preview';
   renderEndpointStatus();
   state.project = null; loadProject(); $('engine-select').value = session.engine || 'visual';
   state.freshTask = state.canContinue = false;
@@ -451,6 +521,7 @@ function attach(session) {
   $("booting-text").textContent = "Connecting…";
   for (const id of ["btn-shot", "btn-full", "btn-close-session"]) $(id).classList.remove("hidden");
   renderTabs();
+  updateViewport();
 
   const canvas = $("screen"), ctx = canvas.getContext("2d");
   const render = async () => {
@@ -466,9 +537,8 @@ function attach(session) {
       $("frame-info").textContent = `${session.width} × ${session.height}`;
       if (!state.firstFrame) {
         state.firstFrame = true;
-        $("booting").classList.add("hidden");
-        canvas.classList.remove("hidden");
-        $("focus-hint").classList.toggle("hidden", state.locked);
+        updateViewport();
+        $("focus-hint").classList.toggle("hidden", state.locked || state.viewMode !== 'live');
       }
     } catch { /* A dropped JPEG is replaced by the next frame. */ }
     finally { if (generation === state.generation) { state.decoding = false; if (state.latestFrame) render(); } }
@@ -813,6 +883,7 @@ async function openSettings() {
   const settings = await loadSettings(); if (!settings) { toast('Settings are unavailable', 'err'); return; }
   $('settings-web').checked = settings.web_search;
   $('settings-autoreview').checked = settings.auto_review;
+  $('settings-engine').value = settings.preferred_engine || 'auto';
   const effort = $('settings-effort'); effort.replaceChildren(); for (const e of settings.efforts) { const o = document.createElement('option'); o.value = e; o.textContent = e; effort.append(o); } effort.value = settings.reasoning_effort;
   const list = $('settings-models'); list.replaceChildren(); settings.models.forEach((m, i) => list.append(modelRow(m, m.name === settings.active_model, i)));
   $('settings-status').textContent = ''; $('settings-dialog').showModal();
@@ -826,7 +897,7 @@ $('settings-save').onclick = async () => {
   const activeRow = rows.find(row => row.querySelector('input[type=radio]').checked);
   const active_model = activeRow ? activeRow.querySelector('input[data-field=name]').value : (models[0]?.name || '');
   try {
-    const saved = await saveSettings({ web_search: $('settings-web').checked, auto_review: $('settings-autoreview').checked, reasoning_effort: $('settings-effort').value, models, active_model });
+    const saved = await saveSettings({ web_search: $('settings-web').checked, auto_review: $('settings-autoreview').checked, preferred_engine: $('settings-engine').value, reasoning_effort: $('settings-effort').value, models, active_model });
     $('settings-status').textContent = 'Saved'; $('web-search-toggle').checked = saved.web_search; setTimeout(() => $('settings-dialog').close(), 400);
   } catch (error) { $('settings-status').textContent = error.message; }
 };
