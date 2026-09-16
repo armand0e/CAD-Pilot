@@ -220,6 +220,8 @@ function renderProject(project) {
   if (changedRevision) $('review-result').classList.add('hidden');
   updatePreview(project);
   updateViewport();
+  $('vp-title').textContent = project.head ? projectEngine(project) : 'Studio';
+  renderTabs();
   $('model-panel').classList.remove('hidden');
   $('model-name').textContent = project.head ? `${project.name} · ${project.head}` : 'No saved revision yet';
   $('model-status').textContent = project.geometry?.valid_solid ? '✓ Valid solid' : project.geometry?.valid_geometry ? `✓ ${project.geometry.solid_count} valid parts` : 'Native tools ready';
@@ -318,7 +320,8 @@ function renderTabs() {
   for (const s of state.sessions) {
     const tab = document.createElement("button");
     tab.className = "session-tab" + (state.session?.id === s.id ? " on" : "");
-    tab.innerHTML = `<span class="tab-dot"></span><span class="tab-label">${escapeHTML(s.app.name.replace(" (AppImage)", ""))}</span><span class="tab-x" title="End session">×</span>`;
+    const tabLabel = (state.session?.id === s.id && state.project?.head) ? projectEngine(state.project) : 'Studio';
+    tab.innerHTML = `<span class="tab-dot"></span><span class="tab-label">${escapeHTML(tabLabel)}</span><span class="tab-x" title="End session">×</span>`;
     tab.dataset.alive = String(!!s.app_alive);
     tab.querySelector(".tab-x").onclick = (e) => { e.stopPropagation(); endSession(s.id); };
     tab.onclick = () => attach(s);
@@ -333,7 +336,7 @@ async function launch(app, projectId = null) {
   state.launching = true;
   $("launcher").classList.add("hidden");
   $("booting").classList.remove("hidden");
-  $("booting-text").textContent = `Starting ${app.name}…`;
+  $("booting-text").textContent = `Preparing your studio…`;
   try {
     const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_id: app.id, project_id: projectId }) });
     if (!res.ok) throw new Error((await res.json()).detail || "launch failed");
@@ -477,8 +480,15 @@ for (const b of document.querySelectorAll('#view-mode [data-view]')) b.onclick =
 // Central viewport display: launcher (no session), the live render preview, or the streamed app.
 function updateViewport() {
   const hasSession = !!state.session;
+  // The streamed app GUI (FreeCAD) is only meaningful for a CAD engine - Blender runs headless, so
+  // its "live app" is an empty FreeCAD window. Offer the Live-app view only once a CAD build exists;
+  // otherwise the render Preview (with its interactive 3D) is the whole story.
+  const cadEngine = hasSession && !!state.project?.head && projectEngine(state.project) !== 'Blender';
+  const liveBtn = document.querySelector('#view-mode [data-view="live"]');
+  if (liveBtn) liveBtn.hidden = !cadEngine;
+  if (!cadEngine && state.viewMode === 'live') { state.viewMode = 'preview'; document.querySelectorAll('#view-mode [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === 'preview')); }
   const live = state.viewMode === 'live';
-  $('view-mode').classList.toggle('hidden', !hasSession);
+  $('view-mode').classList.toggle('hidden', !cadEngine);   // no toggle worth showing without a CAD app
   $('launcher').classList.toggle('hidden', hasSession);
   if (!hasSession) { $('model-preview').classList.add('hidden'); $('booting').classList.add('hidden'); $('screen').classList.add('hidden'); return; }
   $('model-preview').classList.toggle('hidden', live);
@@ -590,7 +600,7 @@ function attach(session) {
   setLocked(state.running); connectionStatus();
   $("screen").classList.add("hidden");
   state.firstFrame = false;
-  $("vp-title").textContent = session.app.name.replace(" (AppImage)", "");
+  $("vp-title").textContent = "Studio";
   $("vp-meta").textContent = `${session.width} × ${session.height}`;
   $("launcher").classList.add("hidden");
   $("booting").classList.remove("hidden");

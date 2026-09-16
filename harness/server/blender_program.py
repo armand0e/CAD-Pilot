@@ -30,9 +30,24 @@ try:
 except Exception as error:  # noqa: BLE001 - characters are optional; never block a build
     print('MBLAB_UNAVAILABLE %s' % error)
 
+def mblab_base(character='f_an01', finalize=True):
+    """Generate an MB-Lab character base and return its body mesh. One foolproof call instead of the
+    raw mbast API. character: anime female f_an01/f_an02/f_an03, anime male m_an01..; realistic
+    female f_ca01 (caucasian) f_as01 (asian) f_af01 (african), male m_ca01..  finalize adds the rig.
+    MB-Lab is already enabled - do NOT enable it yourself."""
+    scene = bpy.context.scene
+    scene.mblab_character_name = character
+    bpy.ops.mbast.init_character()
+    if finalize:
+        bpy.ops.mbast.finalize_character()
+    meshes = [o for o in scene.objects if o.type == 'MESH' and (o.name.startswith('MBlab') or character in o.name)]
+    return max(meshes, key=lambda o: len(o.data.vertices), default=None)
+
 with open(user_script) as handle:
     code = compile(handle.read(), user_script, 'exec')
-user_ns = {'__name__': '__main__', 'bpy': bpy}
+# Inject the character helper so model.bpy can do `body = mblab_base('f_an01')` without touching the
+# raw addon API (the model otherwise mistypes the operator namespace and the module name).
+user_ns = {'__name__': '__main__', 'bpy': bpy, 'mblab_base': mblab_base}
 exec(code, user_ns)  # noqa: S102 - untrusted, contained by the sandbox
 
 # Evaluate procedural objects (metaballs, modifiers) before converting/collecting.

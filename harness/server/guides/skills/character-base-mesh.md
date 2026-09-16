@@ -11,55 +11,52 @@ Use this for humans and anime figures. For rounded mascots and simple animals, k
 figures-and-characters.md (primitives are fine there). character-anatomy.md explains the
 proportion and anatomy you are judging against.
 
-## 1. Generate the base
+## 1. Generate the base - ONE call
 
-MB-Lab is already enabled in the build. Pick a base type, then init a character:
+MB-Lab is ALREADY ENABLED for you. Do NOT enable it, do NOT list addons, do NOT probe the API -
+just call the injected helper `mblab_base(...)`. It inits and finalises a character and returns its
+body mesh:
 
 ```python
 import bpy
-scn = bpy.context.scene
-scn.mblab_character_name = 'f_an01'   # anime female. Choose the base that fits:
-#   anime female: f_an01 f_an02 f_an03   anime male: m_an01 m_an02 m_an03
-#   realistic female: f_ca01 (caucasian) f_as01 (asian) f_af01 (african)
-#   realistic male:   m_ca01              m_as01         m_af01
-bpy.ops.mbast.init_character()        # creates the base body + face + eyes, ~14k verts, real topology
+body = mblab_base('f_an01')   # anime female, finalised with a rig. Returns the body mesh object.
+# base types: anime female f_an01 f_an02 f_an03; anime male m_an01 m_an02 m_an03;
+#   realistic female f_ca01 (caucasian) f_as01 (asian) f_af01 (african); male m_ca01 m_as01 m_af01
 ```
 
-Now `bpy.data.objects` holds the base character mesh - a real body with a face, hands and feet in
-correct proportion. This is the "base to manipulate."
+That single call gives you a real body with a face, hands and feet in correct proportion, plus a
+rig - the professional base to build on. (The raw operator namespace, if you ever need it, is
+`bpy.ops.mbast.*` - note mbast, not "mblast" - but prefer the helper.)
 
-## 2. Shape it BEFORE finalising
+## 2. Shape it (optional) - pass finalize=False first
 
-Set MB-Lab's body parameters on the scene while the character is still parametric:
+To set body proportions before the rig is baked, generate WITHOUT finalising, set MB-Lab's scene
+parameters, then finalise:
 
 ```python
-scn.mblab_body_mass = 0.55   # 0..1 overall body fat/mass (fuller vs lean)
-scn.mblab_body_tone = 0.6    # 0..1 muscle tone/definition
+body = mblab_base('f_an01', finalize=False)
+bpy.context.scene.mblab_body_mass = 0.55   # 0..1 fuller vs lean
+bpy.context.scene.mblab_body_tone = 0.6    # 0..1 muscle tone
+bpy.ops.mbast.finalize_character()         # bakes the shape, adds the skeleton
 ```
 
-For specific shape the request calls for - a fuller bust, wider hips, a narrower waist - the most
-reliable scriptable route is to adjust the mesh region directly (MB-Lab exposes many named morphs,
-but region editing is dependable): select the vertices in that area by world position and scale
-them about their centre with a smooth falloff. Keep changes anatomical and symmetric.
+For a specific request - a fuller bust, wider hips, a narrower waist - the dependable route is to
+edit the mesh region directly after you have the body: select vertices in that area by world
+position and scale them about their centre with a smooth falloff. Keep it anatomical and symmetric.
 
 ```python
 import mathutils
-body = next(o for o in bpy.data.objects if o.type == 'MESH')
-# example: gently enlarge the chest/bust region (tune the band to the character's height)
-zmin, zmax = 1.15, 1.45   # metres, roughly nipple line on an MB-Lab figure - check the bounds
+zmin, zmax = 1.15, 1.45   # metres, roughly the nipple line on an MB-Lab figure - check the bounds
 ctr = mathutils.Vector((0, 0, (zmin + zmax) / 2))
 for v in body.data.vertices:
     if zmin < v.co.z < zmax and v.co.y < 0:        # front of the chest
         v.co = ctr + (v.co - ctr) * mathutils.Vector((1.0, 1.18, 1.06))
 ```
 
-## 3. Finalise (applies the shape, adds the rig)
+## 3. What you now have
 
-```python
-bpy.ops.mbast.finalize_character()   # bakes morphs, builds the skeleton, assigns skin material
-```
-
-After this the character is a finalised mesh plus an ARMATURE you can pose.
+A finalised character mesh (`body`) plus an ARMATURE you can pose. The base is done - the rest is
+art direction.
 
 ## 4. Art direction on top
 
