@@ -87,6 +87,33 @@ for (x, y, z, r) in [(0,0,10,10), (0,0,26,7), (7,0,30,3)]:
   overlap the shapes so the union has real volume.
 - Deleting the default cube is automatic; you start from an empty scene.
 
+## Materials, lighting and the beauty render
+
+Every Blender build also produces a Cycles "beauty" render (the saved view named
+`render`) that shows your materials and lighting - far richer than the flat mesh views.
+Materials and lights affect only that render, never the printable mesh, so use them
+freely to make the result read.
+
+```python
+obj = bpy.context.active_object
+mat = bpy.data.materials.new('Skin'); mat.use_nodes = True
+bsdf = mat.node_tree.nodes['Principled BSDF']
+bsdf.inputs['Base Color'].default_value = (0.85, 0.5, 0.4, 1)   # colour (RGBA 0..1)
+bsdf.inputs['Roughness'].default_value = 0.6
+bsdf.inputs['Metallic'].default_value = 0.0
+obj.data.materials.append(mat)
+
+# Optional: your own camera and lights (else a studio camera, sun and ground are added).
+cam = bpy.data.objects.new('Cam', bpy.data.cameras.new('Cam')); bpy.context.collection.objects.link(cam)
+cam.location = (60, -80, 50); cam.rotation_euler = (1.0, 0, 0.65); bpy.context.scene.camera = cam
+key = bpy.data.objects.new('Key', bpy.data.lights.new('Key', 'AREA')); bpy.context.collection.objects.link(key)
+key.location = (40, -40, 60)
+```
+
+Give different parts different materials so they read apart in the render. An image
+texture can drive Base Color for surface detail; keep textures simple. After the build,
+read the `render` view with view_image - it is the honest picture of the result.
+
 ## Verify and hand off to CAD
 
 - After cad_build, render and read the views (see verify-your-work.md); set views to a

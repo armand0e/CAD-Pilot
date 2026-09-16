@@ -98,12 +98,15 @@ def build():
     Part.export([result], '/work/model.step')
     mesh = mesh_for(shape)
     mesh.write('model.stl')
+    saved_views = render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
+                                                     if Path('build-views.json').is_file() else None))
+    if Path('view-render.png').is_file():
+        saved_views.append('render')  # a Blender Cycles beauty view produced during the source build
     report = {'valid_geometry': True, 'valid_solid': len(shape.Solids) == 1, **detail(shape),
               'parts': reports, 'result_object': result.Name, 'faces': face_table(shape),
               'cuts': [], 'references': [], 'requirements_verified': False,
               'representation': 'faceted mesh converted to BREP' if design['language'] in ('openscad', 'blender-python') else 'analytic BREP',
-              'views': render_views(mesh, '/work', views=(json.loads(Path('build-views.json').read_text())
-                                                          if Path('build-views.json').is_file() else None))}
+              'views': saved_views}
     try:
         report['stl_audit'] = audit_stl('model.stl', len(shape.Solids), shape.Volume, report['bounds_mm'])
     except ValueError as error:

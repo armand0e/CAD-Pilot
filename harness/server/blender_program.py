@@ -52,3 +52,59 @@ bpy.context.view_layer.objects.active = meshes[0]
 bpy.ops.wm.stl_export(filepath=out_stl, export_selected_objects=True,
                       apply_modifiers=True, global_scale=1.0, forward_axis='Y', up_axis='Z')
 print('BLENDER_EXPORT_OK objects=%d' % len(meshes))
+
+# A Cycles "beauty" render showing the model's materials and lighting, saved beside the
+# STL as render.png. The mesh is already exported, so the camera/light/ground added here
+# never reach the printable output. Best-effort: a render failure must not fail the build.
+try:
+    import os
+    import mathutils
+    scene = bpy.context.scene
+    lo = [1e30, 1e30, 1e30]
+    hi = [-1e30, -1e30, -1e30]
+    for obj in meshes:
+        for corner in obj.bound_box:
+            world = obj.matrix_world @ mathutils.Vector(corner)
+            for i in range(3):
+                lo[i] = min(lo[i], world[i])
+                hi[i] = max(hi[i], world[i])
+    center = mathutils.Vector([(lo[i] + hi[i]) / 2 for i in range(3)])
+    span = max((hi[i] - lo[i]) for i in range(3)) or 10.0
+
+    if scene.camera is None:
+        camera = next((o for o in scene.objects if o.type == 'CAMERA'), None)
+        if camera is None:
+            data = bpy.data.cameras.new('StudioCam')
+            data.lens = 55
+            camera = bpy.data.objects.new('StudioCam', data)
+            scene.collection.objects.link(camera)
+            reach = span * 2.0
+            camera.location = center + mathutils.Vector((reach * 0.8, -reach, reach * 0.55))
+            camera.rotation_euler = (center - camera.location).to_track_quat('-Z', 'Y').to_euler()
+        scene.camera = camera
+    if not any(o.type == 'LIGHT' for o in scene.objects):
+        sun = bpy.data.lights.new('StudioSun', 'SUN')
+        sun.energy = 4.0
+        obj = bpy.data.objects.new('StudioSun', sun)
+        scene.collection.objects.link(obj)
+        obj.rotation_euler = (0.6, 0.2, 0.9)
+    for obj in meshes:
+        if not obj.data.materials:
+            mat = bpy.data.materials.new('StudioDefault')
+            mat.use_nodes = True
+            mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.72, 0.72, 0.75, 1)
+            obj.data.materials.append(mat)
+    bpy.ops.mesh.primitive_plane_add(size=span * 8, location=(center[0], center[1], lo[2]))
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new('StudioWorld')
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'CPU'
+    scene.cycles.samples = 48
+    scene.cycles.time_limit = 45  # seconds - never block a build on rendering
+    scene.render.resolution_x = scene.render.resolution_y = 640
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.filepath = os.path.join(os.path.dirname(out_stl), 'render.png')
+    bpy.ops.render.render(write_still=True)
+    print('BLENDER_RENDER_OK')
+except Exception as error:  # noqa: BLE001 - the STL is the deliverable; a render is a bonus
+    print('BLENDER_RENDER_SKIPPED %s' % error)
