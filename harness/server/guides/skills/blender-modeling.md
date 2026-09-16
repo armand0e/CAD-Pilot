@@ -7,6 +7,10 @@ Blender headless, exports the mesh, and validates it as a printable solid the sa
 as the other engines. Use FreeCAD (model.py) instead for precise, parametric, tolerance
 -driven parts - a bracket or gear belongs there, a frog or a dragon belongs here.
 
+For a serious model or character, follow skills/blender-3d-workflow.md - the staged
+process (plan, blockout, forms, remesh, features, texture, rig, animate, light, render,
+grade). This skill is the tooling those stages use.
+
 ## Frame, scale, and two build outcomes
 
 - One Blender unit = one millimetre. Build at millimetre scale (a 40 mm ball is
